@@ -1,16 +1,16 @@
-# Autocomplete Integration Plan
+# Autocomplete Integration Plan (Revised)
 
-**Overall Goal:** To extract the core autocomplete functionality (generation and VS Code UI interaction) from the "Continue" repository, adapt it for your custom LLM providers, and integrate it into a new VS Code extension by copying the relevant source files.
+**Overall Goal:** To extract the core autocomplete functionality (generation and VS Code UI interaction) from the **`continue/`** repository, adapt it for your custom LLM providers, and integrate it into **our existing VS Code extension** by copying the relevant source files from `continue/`.
 
 **High-Level Component Interaction (Conceptual):**
 
 ```mermaid
 graph TD
-    subgraph Your New VS Code Extension
-        A[Your Custom LLM Providers] --> B{"Adapted Core Autocomplete Logic (copied from 'core/')"};
-        B --> C{"VS Code Autocomplete Integration (copied from 'extensions/vscode/src/autocomplete/')"};
+    subgraph Our Existing VS Code Extension
+        A[Your Custom LLM Providers (e.g., via `src/api/`)] --> B{"Adapted Core Autocomplete Logic (from `continue/core/`)"};
+        B --> C{"VS Code Autocomplete Integration (from `continue/extensions/vscode/src/autocomplete/`)"};
         C --> D[VS Code Editor API];
-        E{"Suggestion UI Management (copied from 'extensions/vscode/src/suggestions.ts')"} --> D;
+        E{"Suggestion UI Management (from `continue/extensions/vscode/src/suggestions.ts`)"} --> D;
         C --> E;
     end
 
@@ -20,64 +20,66 @@ graph TD
     style E fill:#cce5ff,stroke:#333,stroke-width:2px
 ```
 
-- **Your Custom LLM Providers**: This is the new component you will build/integrate.
-- **Adapted Core Autocomplete Logic**: This will be based on `core/autocomplete/CompletionProvider.ts`, modified to use your LLM providers.
-- **VS Code Autocomplete Integration**: This will be based on `extensions/vscode/src/autocomplete/completionProvider.ts`, connecting the core logic to VS Code's `InlineCompletionItemProvider` API.
-- **Suggestion UI Management**: This will be based on `extensions/vscode/src/suggestions.ts` for handling how suggestions are displayed and interacted with.
+- **Your Custom LLM Providers**: This refers to our existing LLM integration, likely managed via [`src/api/index.ts`](src/api/index.ts) and specific provider files (e.g., [`src/api/providers/ollama.ts`](src/api/providers/ollama.ts)).
+- **Adapted Core Autocomplete Logic**: This will be based on [`continue/core/autocomplete/CompletionProvider.ts`](continue/core/autocomplete/CompletionProvider.ts), modified to use your LLM providers. This will be compared with and potentially augment/replace parts of our existing logic in [`src/services/autocomplete/PromptRenderer.ts`](src/services/autocomplete/PromptRenderer.ts) and [`src/services/autocomplete/ContextGatherer.ts`](src/services/autocomplete/ContextGatherer.ts).
+- **VS Code Autocomplete Integration**: This will be based on [`continue/extensions/vscode/src/autocomplete/completionProvider.ts`](continue/extensions/vscode/src/autocomplete/completionProvider.ts), connecting the core logic to VS Code's `InlineCompletionItemProvider` API (or our decorator-based approach). This will be compared with our existing [`src/services/autocomplete/AutocompleteProvider.ts`](src/services/autocomplete/AutocompleteProvider.ts), which already handles VS Code integration.
+- **Suggestion UI Management**: This will be based on [`continue/extensions/vscode/src/suggestions.ts`](continue/extensions/vscode/src/suggestions.ts) for handling how suggestions are displayed and interacted with. This will be evaluated against our current suggestion UI handled by decorations in [`src/services/autocomplete/AutocompleteProvider.ts`](src/services/autocomplete/AutocompleteProvider.ts).
 
 **Detailed Plan:**
 
-**Phase 1: In-Depth Code Analysis and Dependency Mapping (within the "Continue" repo)**
-This phase involves understanding the key files and their connections.
+**Phase 1: In-Depth Code Analysis and Dependency Mapping (within the `continue/` repo)**
+This phase involves understanding the key files from `continue/` and their connections, and how they relate to our existing codebase.
 
-1.  **Analyze Core Autocomplete Logic:**
-    - Read and understand `core/autocomplete/CompletionProvider.ts`. Focus on:
+1.  **Analyze Core Autocomplete Logic (from `continue/`):**
+    - Read and understand [`continue/core/autocomplete/CompletionProvider.ts`](continue/core/autocomplete/CompletionProvider.ts). Focus on:
         - How it constructs prompts or prepares data for the LLM.
         - How it processes LLM responses to generate suggestions.
         - Its internal methods and data structures.
-        - Its dependencies (other files in `core/` or external npm packages).
-2.  **Analyze VS Code Integration Layer:**
-    - Read and understand `extensions/vscode/src/autocomplete/completionProvider.ts`. Focus on:
-        - How it instantiates and uses the core `CompletionProvider`.
+        - Its dependencies (other files in `continue/core/` or external npm packages).
+        - Compare its approach with existing context gathering in [`src/services/autocomplete/ContextGatherer.ts`](src/services/autocomplete/ContextGatherer.ts) and prompt generation in [`src/services/autocomplete/PromptRenderer.ts`](src/services/autocomplete/PromptRenderer.ts).
+2.  **Analyze VS Code Integration Layer (from `continue/`):**
+    - Read and understand [`continue/extensions/vscode/src/autocomplete/completionProvider.ts`](continue/extensions/vscode/src/autocomplete/completionProvider.ts). Focus on:
+        - How it instantiates and uses the core `CompletionProvider` from `continue/core/`.
         - How it implements the `vscode.InlineCompletionItemProvider` interface methods (e.g., `provideInlineCompletionItems`).
-        - Its dependencies, including VS Code APIs and other local files.
-3.  **Analyze Suggestion UI Management:**
-    - Read and understand `extensions/vscode/src/suggestions.ts`. Focus on:
+        - Its dependencies, including VS Code APIs and other local files within `continue/extensions/vscode/`.
+        - Compare its VS Code API interactions with our [`src/services/autocomplete/AutocompleteProvider.ts`](src/services/autocomplete/AutocompleteProvider.ts).
+3.  **Analyze Suggestion UI Management (from `continue/`):**
+    - Read and understand [`continue/extensions/vscode/src/suggestions.ts`](continue/extensions/vscode/src/suggestions.ts). Focus on:
         - How it renders suggestions in the editor.
         - How it handles commands for accepting, rejecting, or navigating suggestions.
         - Its dependencies, particularly VS Code APIs.
-4.  **Identify Supporting Files & Initialization:**
-    - Investigate other files in `extensions/vscode/src/autocomplete/` (e.g., `lsp.ts`, `recentlyEdited.ts`, `RecentlyVisitedRangesService.ts`, `statusBar.ts`) to determine their role and if they are essential for the autocomplete functionality you want to replicate.
-    - Examine `extensions/vscode/src/extension.ts` to understand how the autocomplete services and commands are registered and initialized during extension activation.
-    - Check if `extensions/vscode/src/VsCodeIde.ts` is used by the autocomplete components for any essential IDE interactions.
+        - Compare its UI management with the decoration-based approach in [`src/services/autocomplete/AutocompleteProvider.ts`](src/services/autocomplete/AutocompleteProvider.ts).
+4.  **Identify Supporting Files & Initialization (from `continue/`):**
+    - Investigate other files in `continue/extensions/vscode/src/autocomplete/` (e.g., `lsp.ts`, `recentlyEdited.ts`, `RecentlyVisitedRangesService.ts`, `statusBar.ts`) to determine their role and if they are essential for the autocomplete functionality you want to replicate.
+    - Examine [`continue/extensions/vscode/src/extension.ts`](continue/extensions/vscode/src/extension.ts) to understand how the autocomplete services and commands are registered and initialized during extension activation.
+    - Check if [`continue/extensions/vscode/src/VsCodeIde.ts`](continue/extensions/vscode/src/VsCodeIde.ts) is used by the autocomplete components for any essential IDE interactions.
 5.  **Compile Lists:**
-    - Create a definitive list of all TypeScript files to be copied.
-    - List all external npm dependencies required by these files (check `package.json` files in `core/` and `extensions/vscode/`).
+    - Create a definitive list of all TypeScript files to be copied from `continue/`.
+    - List all external npm dependencies required by these files (check `package.json` files in `continue/`, `continue/core/`, and `continue/extensions/vscode/`). These will be merged into our existing extension's [`package.json`](package.json).
 
-**Phase 2: Setting Up Your New VS Code Extension Project**
+**Phase 2: Preparing Existing Extension for Integration**
 
-1.  **Create New Extension:** Use official tools like `yo code` (Yeoman generator for VS Code extensions) to scaffold a new TypeScript-based VS Code extension.
-2.  **Project Setup:**
-    - Initialize `tsconfig.json` appropriately.
-    - Set up `package.json` for your new extension.
-    - Optionally, set up linting (ESLint) and formatting (Prettier) similar to the "Continue" project for consistency if desired.
+1.  **Project Setup:**
+    - Review `tsconfig.json` files within `continue/` (e.g., `continue/tsconfig.json`, `continue/core/tsconfig.json`, `continue/extensions/vscode/tsconfig.json`) and update our existing [`tsconfig.json`](tsconfig.json) if necessary to ensure compatibility with the copied code.
+    - Update our existing [`package.json`](package.json) by adding necessary dependencies identified from `continue/`'s `package.json` files (see Phase 1.5).
+    - Optionally, review linting (ESLint) and formatting (Prettier) configurations in the "Continue" project and align our existing setup if consistency is desired and beneficial.
 
 **Phase 3: Code Integration and Adaptation**
 
 1.  **Copy Files:**
-    - Carefully copy the identified files from the "Continue" repository (Phase 1.5) into your new extension's source directory. Try to maintain a logical subdirectory structure (e.g., `src/core-logic/`, `src/vscode-integration/`).
+    - Carefully copy the identified files from the `continue/` repository (Phase 1.5) into our existing extension's `src/` directory.
+    - Consider placing copied 'core' logic into a subdirectory like `src/services/autocomplete/continue_core/` and 'vscode-integration' logic into `src/services/autocomplete/continue_vscode/`, or decide on how to merge/refactor it with existing files in [`src/services/autocomplete/`](src/services/autocomplete/).
 2.  **Install Dependencies:**
-    - Add the npm dependencies identified in Phase 1.5 to your new extension's `package.json`.
-    - Run `npm install` (or `yarn install`).
+    - After updating our existing [`package.json`](package.json), run `npm install` (or `yarn install`) to fetch the new dependencies.
 3.  **Adapt and Modify:**
-    - **Update Import Paths:** Systematically go through the copied files and update all `import` statements to reflect their new locations within your project.
-    - **Integrate Custom LLM Providers:** This is a critical step. Modify the copied core autocomplete logic (likely originating from `core/autocomplete/CompletionProvider.ts`) to call your custom LLM provider functions/classes instead of the original LLM interaction points. You'll need to define clear interfaces for how your LLM providers will be called.
-    - **Register Components:** In your new extension's main activation file (e.g., `extension.ts`), register the `InlineCompletionItemProvider` and any commands related to suggestions (from the copied `suggestions.ts`). This will involve adapting code found in the original `extensions/vscode/src/extension.ts`.
+    - **Update Import Paths:** Systematically go through the copied files and update all `import` statements to reflect their new locations within our project and to correctly reference our existing modules.
+    - **Integrate Custom LLM Providers:** This is a critical step. Modify the copied core autocomplete logic (likely originating from [`continue/core/autocomplete/CompletionProvider.ts`](continue/core/autocomplete/CompletionProvider.ts)) to call our custom LLM provider functions/classes instead of the original LLM interaction points. This will involve adapting its LLM interaction points to use our existing API handlers, likely through [`src/api/index.ts`](src/api/index.ts) and related provider implementations. Our current [`src/services/autocomplete/AutocompleteProvider.ts`](src/services/autocomplete/AutocompleteProvider.ts) already initializes an `ApiHandler`.
+    - **Register Components:** In our existing main activation file, [`src/extension.ts`](src/extension.ts), register the `InlineCompletionItemProvider` (or adapt our decorator-based provider) and any commands related to suggestions (from the copied `continue/extensions/vscode/src/suggestions.ts` or adapted from it). This will involve adapting code found in the original [`continue/extensions/vscode/src/extension.ts`](continue/extensions/vscode/src/extension.ts) and needs to be reconciled with how [`src/services/autocomplete/AutocompleteProvider.ts`](src/services/autocomplete/AutocompleteProvider.ts) is currently registered and initialized.
     - **Resolve Conflicts & Errors:** Address any TypeScript errors, runtime errors, or logical issues that arise from the copying and modification process. This will likely be an iterative process.
 
 **Phase 4: Testing and Refinement**
 
-1.  **Launch & Debug:** Run your new extension in a VS Code Extension Development Host.
+1.  **Launch & Debug:** Run our extension in a VS Code Extension Development Host.
 2.  **Test Autocomplete:** Thoroughly test the autocomplete functionality in various scenarios (different file types, different code contexts).
-3.  **Verify LLM Integration:** Ensure your custom LLM providers are being called correctly and that their responses are processed as expected.
+3.  **Verify LLM Integration:** Ensure our custom LLM providers are being called correctly and that their responses are processed as expected.
 4.  **Iterate:** Debug any issues, refine the integration, and improve performance or behavior as needed.
