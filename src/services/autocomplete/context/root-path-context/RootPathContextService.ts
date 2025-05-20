@@ -3,10 +3,8 @@ import { createHash } from "crypto"
 import { LRUCache } from "lru-cache"
 import Parser from "web-tree-sitter"
 
-import { AutocompleteCodeSnippet, AutocompleteSnippetType } from "../../snippets/types"
 import { AutocompleteSnippetDeprecated } from "../../types"
 import { ImportDefinitionsService } from "../ImportDefinitionsService"
-import { AstPath } from "../../utils/ast"
 import { IDE } from "../../utils/ide"
 import { getFullLanguageName, getQueryForFile, LanguageName } from "../../utils/treeSitter"
 
@@ -109,38 +107,5 @@ export class RootPathContextService {
 		_language: LanguageName,
 	): Promise<AutocompleteSnippetDeprecated[]> {
 		return []
-	}
-
-	async getContextForPath(
-		filepath: string,
-		astPath: AstPath,
-		// cursorIndex: number,
-	): Promise<AutocompleteCodeSnippet[]> {
-		const snippets: AutocompleteCodeSnippet[] = []
-
-		let parentKey = filepath
-		for (const astNode of astPath.filter((node) => RootPathContextService.TYPES_TO_USE.has(node.type))) {
-			const key = RootPathContextService.keyFromNode(parentKey, astNode)
-			// const type = astNode.type;
-
-			const foundInCache = this.cache.get(key)
-			const newSnippets = foundInCache ?? (await this.getSnippetsForNode(filepath, astNode))
-
-			const formattedSnippets: AutocompleteCodeSnippet[] = newSnippets.map((item) => ({
-				filepath: item.filepath,
-				content: item.contents,
-				type: AutocompleteSnippetType.Code,
-			}))
-
-			snippets.push(...formattedSnippets)
-
-			if (!foundInCache) {
-				this.cache.set(key, newSnippets)
-			}
-
-			parentKey = key
-		}
-
-		return snippets
 	}
 }
