@@ -4,6 +4,7 @@ import { AssertEqual, Equals, Keys, Values } from "../utils/type-fu"
 export type { ExperimentId }
 
 export const EXPERIMENT_IDS = {
+	AUTOCOMPLETE: "autocomplete",
 	POWER_STEERING: "powerSteering",
 } as const satisfies Record<string, ExperimentId>
 
@@ -16,6 +17,7 @@ interface ExperimentConfig {
 }
 
 export const experimentConfigsMap: Record<ExperimentKey, ExperimentConfig> = {
+	AUTOCOMPLETE: { enabled: false },
 	POWER_STEERING: { enabled: false },
 }
 

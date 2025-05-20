@@ -316,7 +316,7 @@ export type CommandExecutionStatus = z.infer<typeof commandExecutionStatusSchema
  * ExperimentId
  */
 
-export const experimentIds = ["powerSteering"] as const
+export const experimentIds = ["powerSteering", "autocomplete"] as const
 
 export const experimentIdsSchema = z.enum(experimentIds)
 
@@ -328,6 +328,7 @@ export type ExperimentId = z.infer<typeof experimentIdsSchema>
 
 const experimentsSchema = z.object({
 	powerSteering: z.boolean(),
+	autocomplete: z.boolean(),
 })
 
 export type Experiments = z.infer<typeof experimentsSchema>

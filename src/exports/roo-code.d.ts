@@ -103,6 +103,7 @@ type GlobalSettings = {
 	experiments?:
 		| {
 				powerSteering: boolean
+				autocomplete: boolean
 		  }
 		| undefined
 	language?:
