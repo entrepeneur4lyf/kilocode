@@ -4,7 +4,7 @@ import {
 	AutocompleteDiffSnippet,
 	AutocompleteSnippet,
 	AutocompleteSnippetType,
-} from "../snippets/types"
+} from "../types"
 import { HelperVars } from "../utils/HelperVars"
 import { getLastNUriRelativePathParts } from "./uri"
 

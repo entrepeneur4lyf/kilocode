@@ -1,8 +1,7 @@
 // Fill in the middle prompts
 
-import { AutocompleteCodeSnippet, AutocompleteSnippet, AutocompleteSnippetType } from "../snippets/types.js"
 import { CompletionOptions } from "../types.js"
-import { getLastNUriRelativePathParts, getShortestUniqueRelativeUriPaths } from "./uri.js"
+import { getLastNUriRelativePathParts } from "./uri.js"
 
 export interface AutocompleteTemplate {
 	compilePrefixSuffix?: (
@@ -10,7 +9,6 @@ export interface AutocompleteTemplate {
 		suffix: string,
 		filepath: string,
 		reponame: string,
-		snippets: AutocompleteSnippet[],
 		workspaceUris: string[],
 	) => [string, string]
 	template:
@@ -21,7 +19,6 @@ export interface AutocompleteTemplate {
 				filepath: string,
 				reponame: string,
 				language: string,
-				snippets: AutocompleteSnippet[],
 				workspaceUris: string[],
 		  ) => string)
 	completionOptions?: Partial<CompletionOptions>
@@ -86,90 +83,17 @@ const seedCoderFimTemplate: AutocompleteTemplate = {
 // }
 
 const codestralMultifileFimTemplate: AutocompleteTemplate = {
-	compilePrefixSuffix: (prefix, suffix, filepath, reponame, snippets, workspaceUris): [string, string] => {
-		function getFileName(snippet: { uri: string; uniquePath: string }) {
-			return snippet.uri.startsWith("file://") ? snippet.uniquePath : snippet.uri
+	compilePrefixSuffix: (prefix, suffix, filepath, reponame, workspaceUris): [string, string] => {
+		if (suffix.trim().length === 0 && prefix.trim().length === 0) {
+			return [`+++++ ${getLastNUriRelativePathParts(workspaceUris, filepath, 2)}\n${prefix}`, suffix]
 		}
-
-		if (snippets.length === 0) {
-			if (suffix.trim().length === 0 && prefix.trim().length === 0) {
-				return [`+++++ ${getLastNUriRelativePathParts(workspaceUris, filepath, 2)}\n${prefix}`, suffix]
-			}
-			return [prefix, suffix]
-		}
-
-		const relativePaths = getShortestUniqueRelativeUriPaths(
-			[
-				...snippets.map((snippet) => ("filepath" in snippet ? snippet.filepath : "file:///Untitled.txt")),
-				filepath,
-			],
-			workspaceUris,
-		)
-
-		const otherFiles = snippets
-			.map((snippet, i) => {
-				if (snippet.type === AutocompleteSnippetType.Diff) {
-					return snippet.content
-				}
-
-				return `+++++ ${getFileName(relativePaths[i])} \n${snippet.content}`
-			})
-			.join("\n\n")
-
-		return [`${otherFiles}\n\n+++++ ${getFileName(relativePaths[relativePaths.length - 1])}\n${prefix}`, suffix]
+		return [prefix, suffix]
 	},
 	template: (prefix: string, suffix: string): string => {
 		return `[SUFFIX]${suffix}[PREFIX]${prefix}`
 	},
 	completionOptions: {
 		stop: ["[PREFIX]", "[SUFFIX]", "\n+++++ "],
-	},
-}
-
-const mercuryMultifileFimTemplate: AutocompleteTemplate = {
-	compilePrefixSuffix: (prefix, suffix, filepath, reponame, snippets, workspaceUris): [string, string] => {
-		function getFileName(snippet: { uri: string; uniquePath: string }) {
-			return snippet.uri.startsWith("file://") ? snippet.uniquePath : snippet.uri
-		}
-
-		// Our current snippet format doesn't work well with mercury. We need to clean this up
-		snippets = []
-
-		if (snippets.length === 0) {
-			if (suffix.trim().length === 0 && prefix.trim().length === 0) {
-				return [
-					`<|file_sep|>${getLastNUriRelativePathParts(workspaceUris, filepath, 2)}\n<|fim_prefix|>${prefix}`,
-					suffix,
-				]
-			}
-			return [`<|fim_prefix|>${prefix}`, suffix]
-		}
-
-		const relativePaths = getShortestUniqueRelativeUriPaths(
-			[
-				...snippets.map((snippet) => ("filepath" in snippet ? snippet.filepath : "file:///Untitled.txt")),
-				filepath,
-			],
-			workspaceUris,
-		)
-
-		const otherFiles = snippets
-			.map((snippet, i) => {
-				if (snippet.type === AutocompleteSnippetType.Diff) {
-					return snippet.content
-				}
-
-				return `<|file_sep|>${getFileName(relativePaths[i])} \n${snippet.content}`
-			})
-			.join("\n\n")
-
-		return [
-			`${otherFiles}${otherFiles ? "\n\n" : ""}<|file_sep|>${getFileName(relativePaths[relativePaths.length - 1])}\n<|fim_prefix|>${prefix}`,
-			suffix,
-		]
-	},
-	template: (prefix: string, suffix: string): string => {
-		return `${prefix}<|fim_suffix|>${suffix}<|fim_middle|>`
 	},
 }
 
@@ -210,34 +134,6 @@ const deepseekFimTemplate: AutocompleteTemplate = {
 	template: "<｜fim▁begin｜>{{{prefix}}}<｜fim▁hole｜>{{{suffix}}}<｜fim▁end｜>",
 	completionOptions: {
 		stop: ["<｜fim▁begin｜>", "<｜fim▁hole｜>", "<｜fim▁end｜>", "//", "<｜end▁of▁sentence｜>"],
-	},
-}
-
-// https://github.com/THUDM/CodeGeeX4/blob/main/guides/Infilling_guideline.md
-const codegeexFimTemplate: AutocompleteTemplate = {
-	template: (prefix, suffix, filepath, reponame, language, allSnippets, workspaceUris): string => {
-		const snippets = allSnippets.filter(
-			(snippet) => snippet.type === AutocompleteSnippetType.Code,
-		) as AutocompleteCodeSnippet[]
-
-		const relativePaths = getShortestUniqueRelativeUriPaths(
-			[...snippets.map((snippet) => snippet.filepath), filepath],
-			workspaceUris,
-		)
-		const baseTemplate = `###PATH:${
-			relativePaths[relativePaths.length - 1]
-		}\n###LANGUAGE:${language}\n###MODE:BLOCK\n<|code_suffix|>${suffix}<|code_prefix|>${prefix}<|code_middle|>`
-		if (snippets.length === 0) {
-			return `<|user|>\n${baseTemplate}<|assistant|>\n`
-		}
-		const references = `###REFERENCE:\n${snippets
-			.map((snippet, i) => `###PATH:${relativePaths[i]}\n${snippet.content}\n`)
-			.join("###REFERENCE:\n")}`
-		const prompt = `<|user|>\n${references}\n${baseTemplate}<|assistant|>\n`
-		return prompt
-	},
-	completionOptions: {
-		stop: ["<|user|>", "<|code_suffix|>", "<|code_prefix|>", "<|code_middle|>", "<|assistant|>", "<|endoftext|>"],
 	},
 }
 
@@ -350,13 +246,6 @@ function hypothenuse(a, b) {
 export function getTemplateForModel(model: string): AutocompleteTemplate {
 	const lowerCaseModel = model.toLowerCase()
 
-	// if (lowerCaseModel.includes("starcoder2")) {
-	//   return starcoder2FimTemplate;
-	// }
-	if (lowerCaseModel.includes("mercury")) {
-		return mercuryMultifileFimTemplate
-	}
-
 	if (lowerCaseModel.includes("qwen") && lowerCaseModel.includes("coder")) {
 		return qwenCoderFimTemplate
 	}
@@ -391,10 +280,6 @@ export function getTemplateForModel(model: string): AutocompleteTemplate {
 
 	if (lowerCaseModel.includes("deepseek")) {
 		return deepseekFimTemplate
-	}
-
-	if (lowerCaseModel.includes("codegeex")) {
-		return codegeexFimTemplate
 	}
 
 	if (

@@ -96,7 +96,6 @@ export class PromptRenderer {
 				filepath,
 				reponame,
 				language,
-				[], // No snippets for now
 				[], // No workspace URIs for now
 			)
 		}
