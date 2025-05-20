@@ -39,8 +39,8 @@ export class AutocompleteProvider {
 	private decorationType: vscode.TextEditorDecorationType
 
 	constructor() {
-		this.config = new AutocompleteConfig()
 		this.cache = new CompletionCache()
+		this.config = new AutocompleteConfig()
 		this.contextGatherer = new ContextGatherer()
 		this.promptRenderer = new PromptRenderer()
 
@@ -56,8 +56,8 @@ export class AutocompleteProvider {
 	/**
 	 * Register the autocomplete provider with VSCode
 	 */
-	async register(context: vscode.ExtensionContext): Promise<vscode.Disposable> {
-		await this.initializeApiHandler()
+	register(context: vscode.ExtensionContext): vscode.Disposable {
+		this.initializeApiHandler()
 
 		// Register event handlers for preview text
 		this.registerTextEditorEvents(context)
@@ -126,7 +126,6 @@ export class AutocompleteProvider {
 	 * Register editor event handlers for tracking cursor position and document changes
 	 */
 	private registerTextEditorEvents(context: vscode.ExtensionContext): void {
-		// Register cursor position change event
 		context.subscriptions.push(
 			vscode.window.onDidChangeTextEditorSelection((e) => {
 				if (e.textEditor) {
