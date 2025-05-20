@@ -1,9 +1,21 @@
-import { countTokens } from "../../../utils/countTokens"
 import { AutocompleteLanguageInfo, languageForFilepath } from "../constants/AutocompleteLanguageInfo"
 import { constructInitialPrefixSuffix } from "../templating/constructPrefixSuffix"
 import { AutocompleteInput } from "../types"
 import { AstPath, getAst, getTreePathAtCursor } from "./ast"
 import { IDE } from "./ide"
+
+// Tab autocomplete options to configure how autocomplete should work
+export interface TabAutocompleteOptions {
+	maxPromptTokens: number
+	prefixPercentage?: number
+	maxSuffixPercentage?: number
+	onlyMyCode?: boolean
+	useRecentlyEdited?: boolean
+	experimental_includeClipboard: boolean
+	experimental_includeRecentlyVisitedRanges: boolean
+	experimental_includeRecentlyEditedRanges: boolean
+	experimental_includeDiff: boolean
+}
 
 /**
  * A collection of variables that are often accessed throughout the autocomplete pipeline

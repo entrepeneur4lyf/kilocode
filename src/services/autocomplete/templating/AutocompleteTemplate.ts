@@ -78,12 +78,12 @@ const seedCoderFimTemplate: AutocompleteTemplate = {
 	},
 }
 
-const codestralFimTemplate: AutocompleteTemplate = {
-	template: "[SUFFIX]{{{suffix}}}[PREFIX]{{{prefix}}}",
-	completionOptions: {
-		stop: ["[PREFIX]", "[SUFFIX]"],
-	},
-}
+// const codestralFimTemplate: AutocompleteTemplate = {
+// 	template: "[SUFFIX]{{{suffix}}}[PREFIX]{{{prefix}}}",
+// 	completionOptions: {
+// 		stop: ["[PREFIX]", "[SUFFIX]"],
+// 	},
+// }
 
 const codestralMultifileFimTemplate: AutocompleteTemplate = {
 	compilePrefixSuffix: (prefix, suffix, filepath, reponame, snippets, workspaceUris): [string, string] => {
@@ -181,24 +181,24 @@ const codegemmaFimTemplate: AutocompleteTemplate = {
 }
 
 // https://arxiv.org/pdf/2402.19173.pdf section 5.1
-const starcoder2FimTemplate: AutocompleteTemplate = {
-	template: (prefix, suffix, filename, reponame, language, snippets, workspaceUris): string => {
-		const otherFiles =
-			snippets.length === 0
-				? ""
-				: `<file_sep>${snippets
-						.map((snippet) => {
-							return snippet.content
-						})
-						.join("<file_sep>")}<file_sep>`
+// const starcoder2FimTemplate: AutocompleteTemplate = {
+// 	template: (prefix, suffix, filename, reponame, language, snippets, workspaceUris): string => {
+// 		const otherFiles =
+// 			snippets.length === 0
+// 				? ""
+// 				: `<file_sep>${snippets
+// 						.map((snippet) => {
+// 							return snippet.content
+// 						})
+// 						.join("<file_sep>")}<file_sep>`
 
-		const prompt = `${otherFiles}<fim_prefix>${prefix}<fim_suffix>${suffix}<fim_middle>`
-		return prompt
-	},
-	completionOptions: {
-		stop: ["<fim_prefix>", "<fim_suffix>", "<fim_middle>", "<file_sep>", "<|endoftext|>"],
-	},
-}
+// 		const prompt = `${otherFiles}<fim_prefix>${prefix}<fim_suffix>${suffix}<fim_middle>`
+// 		return prompt
+// 	},
+// 	completionOptions: {
+// 		stop: ["<fim_prefix>", "<fim_suffix>", "<fim_middle>", "<file_sep>", "<|endoftext|>"],
+// 	},
+// }
 
 const codeLlamaFimTemplate: AutocompleteTemplate = {
 	template: "<PRE> {{{prefix}}} <SUF>{{{suffix}}} <MID>",
@@ -241,14 +241,14 @@ const codegeexFimTemplate: AutocompleteTemplate = {
 	},
 }
 
-const gptAutocompleteTemplate: AutocompleteTemplate = {
-	template: `\`\`\`
-{{{prefix}}}[BLANK]{{{suffix}}}
-\`\`\`
+// const gptAutocompleteTemplate: AutocompleteTemplate = {
+// 	template: `\`\`\`
+// {{{prefix}}}[BLANK]{{{suffix}}}
+// \`\`\`
 
-Fill in the blank to complete the code block. Your response should include only the code to replace [BLANK], without surrounding backticks.`,
-	completionOptions: { stop: ["\n"] },
-}
+// Fill in the blank to complete the code block. Your response should include only the code to replace [BLANK], without surrounding backticks.`,
+// 	completionOptions: { stop: ["\n"] },
+// }
 
 const holeFillerTemplate: AutocompleteTemplate = {
 	template: (prefix: string, suffix: string) => {

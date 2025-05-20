@@ -1,4 +1,4 @@
-import { RangeInFile } from ".."
+import { Range, RangeInFile, Location } from ".."
 
 export interface IDE {
 	// getIdeInfo(): Promise<IdeInfo>

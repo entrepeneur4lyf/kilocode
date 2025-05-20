@@ -12,14 +12,7 @@ import { CompletionOptions } from "../types"
 import { HelperVars } from "../utils/HelperVars"
 
 function getTemplate(helper: HelperVars): AutocompleteTemplate {
-  if (helper.options.template) {
-    return {
-      template: helper.options.template,
-      completionOptions: {},
-      compilePrefixSuffix: undefined,
-    };
-  }
-  return getTemplateForModel(helper.modelName);
+	return getTemplateForModel(helper.modelName)
 }
 
 function renderStringTemplate(

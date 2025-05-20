@@ -6,6 +6,19 @@ import {
 	AutocompleteDiffSnippet,
 	AutocompleteSnippetType,
 } from "./types"
+// Define missing types for GetLspDefinitionsFunction and ContextRetrievalService
+export type GetLspDefinitionsFunction = (
+	filepath: string,
+	fileContents: string,
+	cursorPosition: number,
+	ide: IDE,
+	lang: any,
+) => Promise<AutocompleteCodeSnippet[]>
+
+export interface ContextRetrievalService {
+	// This is a stub interface that would normally have methods for retrieving context
+	getContextForPath?: (filepath: string, astPath: any) => Promise<AutocompleteCodeSnippet[]>
+}
 
 const IDE_SNIPPETS_ENABLED = false // ideSnippets is not used, so it's temporarily disabled
 
@@ -51,9 +64,9 @@ const diffSnippetsCache = new DiffSnippetsCache()
 // Some IDEs might have special ways of finding snippets (e.g. JetBrains and VS Code have different "LSP-equivalent" systems,
 // or they might separately track recently edited ranges)
 async function getIdeSnippets(
-	helper: HelperVars,
-	ide: IDE,
-	getDefinitionsFromLsp: GetLspDefinitionsFunction,
+	_helper: HelperVars,
+	_ide: IDE,
+	_getDefinitionsFromLsp: GetLspDefinitionsFunction,
 ): Promise<AutocompleteCodeSnippet[]> {
 	return []
 	// const ideSnippets = await getDefinitionsFromLsp(
@@ -135,12 +148,12 @@ export const getAllSnippets = async ({
 	helper,
 	ide,
 	getDefinitionsFromLsp,
-	contextRetrievalService,
+	_contextRetrievalService,
 }: {
 	helper: HelperVars
 	ide: IDE
 	getDefinitionsFromLsp: GetLspDefinitionsFunction
-	contextRetrievalService: ContextRetrievalService
+	_contextRetrievalService: ContextRetrievalService
 }): Promise<SnippetPayload> => {
 	const recentlyEditedRangeSnippets = getSnippetsFromRecentlyEditedRanges(helper)
 

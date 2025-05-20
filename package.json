@@ -492,6 +492,7 @@
 		"handlebars": "^4.7.8",
 		"i18next": "^24.2.2",
 		"isbinaryfile": "^5.0.2",
+		"lru-cache": "^11.1.0",
 		"mammoth": "^1.8.0",
 		"monaco-vscode-textmate-theme-converter": "^0.1.7",
 		"node-cache": "^5.1.2",

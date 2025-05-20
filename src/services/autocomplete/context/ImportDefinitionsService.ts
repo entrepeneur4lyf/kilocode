@@ -72,12 +72,8 @@ export class ImportDefinitionsService {
 			}
 		}
 
-		
-
-
-		setTimeout(() => {}, 400)
-		
-		const matches = query?.matches(ast.rootNode)
+		// Using non-optional matches since query is already checked for null above
+		const matches = query.matches(ast.rootNode)
 
 		const fileInfo: FileInfo = {
 			imports: {},
@@ -85,7 +81,7 @@ export class ImportDefinitionsService {
 		for (const match of matches) {
 			const startPosition = match.captures[0].node.startPosition
 			const defs = await this.ide.gotoDefinition({
-				filepath,
+				filepath: filepath,
 				position: {
 					line: startPosition.row,
 					character: startPosition.column,
@@ -102,3 +98,4 @@ export class ImportDefinitionsService {
 		return fileInfo
 	}
 }
+ 

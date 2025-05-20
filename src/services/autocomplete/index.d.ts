@@ -29,11 +29,6 @@ export interface RangeInFile {
 	range: Range
 }
 
-export interface RangeInFile {
-	filepath: string
-	range: Range
-}
-
 export interface FileWithContents {
 	filepath: string
 	contents: string
