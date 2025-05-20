@@ -1,4 +1,5 @@
 import { HelperVars } from "../utils/HelperVars"
+import { IDE } from "../utils/ide"
 import {
 	AutocompleteClipboardSnippet,
 	AutocompleteCodeSnippet,
@@ -54,23 +55,24 @@ async function getIdeSnippets(
 	ide: IDE,
 	getDefinitionsFromLsp: GetLspDefinitionsFunction,
 ): Promise<AutocompleteCodeSnippet[]> {
-	const ideSnippets = await getDefinitionsFromLsp(
-		helper.input.filepath,
-		helper.fullPrefix + helper.fullSuffix,
-		helper.fullPrefix.length,
-		ide,
-		helper.lang,
-	)
+	return []
+	// const ideSnippets = await getDefinitionsFromLsp(
+	// 	helper.input.filepath,
+	// 	helper.fullPrefix + helper.fullSuffix,
+	// 	helper.fullPrefix.length,
+	// 	ide,
+	// 	helper.lang,
+	// )
 
-	if (helper.options.onlyMyCode) {
-		const workspaceDirs = await ide.getWorkspaceDirs()
+	// if (helper.options.onlyMyCode) {
+	// 	const workspaceDirs = await ide.getWorkspaceDirs()
 
-		return ideSnippets.filter((snippet) =>
-			workspaceDirs.some((dir) => !!findUriInDirs(snippet.filepath, [dir]).foundInDir),
-		)
-	}
+	// 	return ideSnippets.filter((snippet) =>
+	// 		workspaceDirs.some((dir) => !!findUriInDirs(snippet.filepath, [dir]).foundInDir),
+	// 	)
+	// }
 
-	return ideSnippets
+	// return ideSnippets
 }
 
 function getSnippetsFromRecentlyEditedRanges(helper: HelperVars): AutocompleteCodeSnippet[] {
@@ -142,18 +144,15 @@ export const getAllSnippets = async ({
 }): Promise<SnippetPayload> => {
 	const recentlyEditedRangeSnippets = getSnippetsFromRecentlyEditedRanges(helper)
 
-	const [rootPathSnippets, importDefinitionSnippets, ideSnippets, diffSnippets, clipboardSnippets] =
-		await Promise.all([
-			racePromise(contextRetrievalService.getRootPathSnippets(helper)),
-			racePromise(contextRetrievalService.getSnippetsFromImportDefinitions(helper)),
-			IDE_SNIPPETS_ENABLED ? racePromise(getIdeSnippets(helper, ide, getDefinitionsFromLsp)) : [],
-			racePromise(getDiffSnippets(ide)),
-			racePromise(getClipboardSnippets(ide)),
-		])
+	const [ideSnippets, diffSnippets, clipboardSnippets] = await Promise.all([
+		IDE_SNIPPETS_ENABLED ? racePromise(getIdeSnippets(helper, ide, getDefinitionsFromLsp)) : [],
+		racePromise(getDiffSnippets(ide)),
+		racePromise(getClipboardSnippets(ide)),
+	])
 
 	return {
-		rootPathSnippets,
-		importDefinitionSnippets,
+		rootPathSnippets: [],
+		importDefinitionSnippets: [],
 		ideSnippets,
 		recentlyEditedRangeSnippets,
 		diffSnippets,

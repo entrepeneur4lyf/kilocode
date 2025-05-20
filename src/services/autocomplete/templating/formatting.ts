@@ -5,7 +5,7 @@ import {
 	AutocompleteSnippet,
 	AutocompleteSnippetType,
 } from "../snippets/types"
-import { HelperVars } from "../util/HelperVars"
+import { HelperVars } from "../utils/HelperVars"
 import { getLastNUriRelativePathParts } from "./uri"
 
 const getCommentMark = (helper: HelperVars) => {

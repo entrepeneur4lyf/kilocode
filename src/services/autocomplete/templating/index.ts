@@ -1,14 +1,15 @@
 import Handlebars from "handlebars";
 
 import { AutocompleteLanguageInfo } from "../constants/AutocompleteLanguageInfo"
-import { HelperVars } from "../util/HelperVars"
 
-import { SnippetPayload } from "../snippets"
 import { AutocompleteTemplate, getTemplateForModel } from "./AutocompleteTemplate"
 import { getSnippets } from "./filtering"
-import { formatSnippets } from "./formatting";
-import { getStopTokens } from "./getStopTokens";
+import { formatSnippets } from "./formatting"
+import { getStopTokens } from "./getStopTokens"
 import { getUriPathBasename } from "./uri"
+import { SnippetPayload } from "../snippets/getAllSnippets"
+import { CompletionOptions } from "../types"
+import { HelperVars } from "../utils/HelperVars"
 
 function getTemplate(helper: HelperVars): AutocompleteTemplate {
   if (helper.options.template) {
