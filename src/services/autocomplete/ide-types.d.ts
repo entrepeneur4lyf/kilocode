@@ -1,3 +1,5 @@
+//PLANREF: continue/core/autocomplete/types.ts
+//PLANREF: continue/core/index.d.ts
 export interface Location {
 	filepath: string
 	position: Position

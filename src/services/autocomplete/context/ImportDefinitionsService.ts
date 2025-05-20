@@ -1,3 +1,4 @@
+//PLANREF: continue/extensions/vscode/src/autocomplete/lsp.ts
 import { RangeInFileWithContents } from "../ide-types"
 import { findUriInDirs } from "../templating/uri"
 import { IDE } from "../utils/ide"

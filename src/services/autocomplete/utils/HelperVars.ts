@@ -1,3 +1,4 @@
+//PLANREF: continue/core/autocomplete/util/HelperVars.ts
 import { AutocompleteLanguageInfo, languageForFilepath } from "../AutocompleteLanguageInfo"
 import { constructInitialPrefixSuffix } from "../templating/constructPrefixSuffix"
 import { AutocompleteInput } from "../types"

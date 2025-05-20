@@ -1,3 +1,7 @@
+//PLANREF: continue/core/autocomplete/context/ContextRetrievalService.ts
+//PLANREF: continue/extensions/vscode/src/autocomplete/recentlyEdited.ts
+//PLANREF: continue/extensions/vscode/src/autocomplete/RecentlyVisitedRangesService.ts
+//PLANREF: continue/extensions/vscode/src/autocomplete/lsp.ts
 import * as vscode from "vscode"
 
 /**

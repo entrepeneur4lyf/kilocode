@@ -1,3 +1,4 @@
+//PLANREF: continue/core/autocomplete/util/AutocompleteLruCache.ts
 /**
  * Interface for cache entries
  */

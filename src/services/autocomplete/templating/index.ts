@@ -1,3 +1,4 @@
+//PLANREF: continue/core/autocomplete/templating/index.ts
 import Handlebars from "handlebars";
 
 import { AutocompleteLanguageInfo } from "../AutocompleteLanguageInfo"

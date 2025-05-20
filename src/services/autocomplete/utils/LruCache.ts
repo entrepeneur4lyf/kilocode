@@ -1,3 +1,4 @@
+//PLANREF: continue/core/autocomplete/util/AutocompleteLruCache.ts
 export class PrecalculatedLruCache<V> {
   private items: [string, V][] = [];
   constructor(

@@ -1,3 +1,5 @@
+//PLANREF: continue/core/autocomplete/CompletionProvider.ts
+//PLANREF: continue/extensions/vscode/src/autocomplete/completionProvider.ts
 import * as vscode from "vscode"
 import { AutocompleteConfig } from "./AutocompleteConfig"
 import { ApiHandler, buildApiHandler } from "../../api"

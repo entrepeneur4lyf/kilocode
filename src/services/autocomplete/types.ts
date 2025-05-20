@@ -1,3 +1,5 @@
+//PLANREF: continue/core/autocomplete/util/types.ts
+//PLANREF: continue/core/autocomplete/types.ts
 import { Position } from "vscode"
 import { RangeInFile, Range, RangeInFileWithContents } from "./ide-types"
 

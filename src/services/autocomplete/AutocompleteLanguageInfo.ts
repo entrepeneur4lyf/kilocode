@@ -1,3 +1,4 @@
+//PLANREF: continue/core/autocomplete/constants/AutocompleteLanguageInfo.ts
 /**
  * Interface for language-specific autocomplete information
  */

@@ -1,3 +1,4 @@
+//PLANREF: continue/core/autocomplete/templating/index.ts
 import { readFile } from "fs/promises"
 import { languageForFilepath } from "../AutocompleteLanguageInfo"
 import { getRangeInString } from "./ranges"

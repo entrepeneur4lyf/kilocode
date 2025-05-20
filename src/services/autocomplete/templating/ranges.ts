@@ -1,3 +1,4 @@
+//PLANREF: continue/core/util/ranges.ts
 import { Position, Range } from "../ide-types.js"
 
 export function getRangeInString(content: string, range: Range): string {

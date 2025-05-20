@@ -1,3 +1,5 @@
+//PLANREF: continue/extensions/vscode/src/VsCodeIde.ts
+//PLANREF: continue/extensions/vscode/src/util/ideUtils.ts
 import { Range, RangeInFile, Location } from "../ide-types"
 
 export interface IDE {

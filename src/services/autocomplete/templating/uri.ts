@@ -1,3 +1,5 @@
+//PLANREF: continue/extensions/vscode/src/util/vscode.ts
+//PLANREF: uri-js (npm package)
 import * as URI from "uri-js";
 
 /** Converts any OS path to cleaned up URI path segment format with no leading/trailing slashes

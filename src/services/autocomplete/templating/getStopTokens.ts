@@ -1,8 +1,9 @@
+//PLANREF: continue/core/autocomplete/templating/index.ts
 import { AutocompleteLanguageInfo } from "../AutocompleteLanguageInfo"
 import { CompletionOptions } from "../types"
 
-const DOUBLE_NEWLINE = "\n\n"
-const WINDOWS_DOUBLE_NEWLINE = "\r\n\r\n"
+const _DOUBLE_NEWLINE = "\n\n"
+const _WINDOWS_DOUBLE_NEWLINE = "\r\n\r\n"
 // TODO: Do we want to stop completions when reaching a `/src/` string?
 const SRC_DIRECTORY = "/src/"
 // Starcoder2 tends to output artifacts starting with the letter "t"

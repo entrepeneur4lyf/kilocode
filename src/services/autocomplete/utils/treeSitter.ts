@@ -1,3 +1,5 @@
+//PLANREF: continue/core/autocomplete/util/ast.ts
+//PLANREF: continue/core/indexing/chunk/code.ts
 import fs from "node:fs"
 import path from "path"
 

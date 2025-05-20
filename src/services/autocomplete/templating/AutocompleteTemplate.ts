@@ -1,3 +1,4 @@
+//PLANREF: continue/core/autocomplete/templating/index.ts
 // Fill in the middle prompts
 
 import { CompletionOptions } from "../types.js"

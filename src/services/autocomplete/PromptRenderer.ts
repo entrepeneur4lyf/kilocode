@@ -1,3 +1,4 @@
+//PLANREF: continue/core/autocomplete/templating/index.ts
 import { CodeContext } from "./ContextGatherer"
 import { getTemplateForModel } from "./templating/AutocompleteTemplate"
 import { getStopTokens } from "./templating/getStopTokens"
