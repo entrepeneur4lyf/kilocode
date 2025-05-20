@@ -1,6 +1,6 @@
 import Handlebars from "handlebars";
 
-import { AutocompleteLanguageInfo } from "../constants/AutocompleteLanguageInfo"
+import { AutocompleteLanguageInfo } from "../AutocompleteLanguageInfo"
 
 import { AutocompleteTemplate, getTemplateForModel } from "./AutocompleteTemplate"
 import { getStopTokens } from "./getStopTokens"

@@ -2,7 +2,7 @@ import { CodeContext } from "./ContextGatherer"
 import { getTemplateForModel } from "./templating/AutocompleteTemplate"
 import { getStopTokens } from "./templating/getStopTokens"
 import * as vscode from "vscode"
-import { getLanguageInfo } from "./constants/AutocompleteLanguageInfo"
+import { getLanguageInfo } from "./AutocompleteLanguageInfo"
 
 /**
  * Interface for prompt options

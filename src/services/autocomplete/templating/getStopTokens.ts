@@ -1,4 +1,4 @@
-import { AutocompleteLanguageInfo } from "../constants/AutocompleteLanguageInfo"
+import { AutocompleteLanguageInfo } from "../AutocompleteLanguageInfo"
 import { CompletionOptions } from "../types"
 
 const DOUBLE_NEWLINE = "\n\n"

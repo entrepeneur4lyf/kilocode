@@ -1,4 +1,4 @@
-import { AutocompleteLanguageInfo, languageForFilepath } from "../constants/AutocompleteLanguageInfo"
+import { AutocompleteLanguageInfo, languageForFilepath } from "../AutocompleteLanguageInfo"
 import { constructInitialPrefixSuffix } from "../templating/constructPrefixSuffix"
 import { AutocompleteInput } from "../types"
 import { AstPath, getAst, getTreePathAtCursor } from "./ast"

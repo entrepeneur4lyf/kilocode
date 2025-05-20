@@ -1,5 +1,5 @@
 import { readFile } from "fs/promises"
-import { languageForFilepath } from "../constants/AutocompleteLanguageInfo"
+import { languageForFilepath } from "../AutocompleteLanguageInfo"
 import { getRangeInString } from "./ranges"
 import { AutocompleteInput } from "../types"
 

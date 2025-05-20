@@ -1,34 +1,6 @@
 import { Position } from "vscode"
 import { RangeInFile, Range, RangeInFileWithContents } from "./ide-types"
 
-// Replacement types for removed snippet functionality
-export enum AutocompleteSnippetType {
-	Code = "code",
-	Diff = "diff",
-	Clipboard = "clipboard",
-}
-
-export interface BaseAutocompleteSnippet {
-	content: string
-	type: AutocompleteSnippetType
-}
-
-export interface AutocompleteCodeSnippet extends BaseAutocompleteSnippet {
-	filepath: string
-	type: AutocompleteSnippetType.Code
-}
-
-export interface AutocompleteDiffSnippet extends BaseAutocompleteSnippet {
-	type: AutocompleteSnippetType.Diff
-}
-
-export interface AutocompleteClipboardSnippet extends BaseAutocompleteSnippet {
-	type: AutocompleteSnippetType.Clipboard
-	copiedAt: string
-}
-
-export type AutocompleteSnippet = AutocompleteCodeSnippet | AutocompleteDiffSnippet | AutocompleteClipboardSnippet
-
 export interface BaseCompletionOptions {
 	temperature?: number
 	topP?: number
@@ -68,7 +40,7 @@ export interface AutocompleteInput {
 	completionId: string
 	filepath: string
 	pos: Position
-	recentlyVisitedRanges: AutocompleteCodeSnippet[]
+	recentlyVisitedRanges: unknown[]
 	recentlyEditedRanges: RecentlyEditedRange[]
 	// Used for notebook files
 	manuallyPassFileContents?: string
@@ -81,13 +53,6 @@ export interface AutocompleteInput {
 	injectDetails?: string
 }
 
-// interface ToolChoice {
-// 	type: "function"
-// 	function: {
-// 		name: string
-// 	}
-// }
-
 export interface Prediction {
 	type: "content"
 	content:
@@ -97,26 +62,6 @@ export interface Prediction {
 				text: string
 		  }[]
 }
-
-// export interface Tool {
-// 	type: "function"
-// 	function: {
-// 		name: string
-// 		description?: string
-// 		parameters?: Record<string, any>
-// 		strict?: boolean | null
-// 	}
-
-// 	displayTitle: string
-// 	wouldLikeTo?: string
-// 	isCurrently?: string
-// 	hasAlready?: string
-// 	readonly: boolean
-// 	isInstant?: boolean
-// 	uri?: string
-// 	faviconUrl?: string
-// 	group: string
-// }
 
 /**
  * @deprecated This type should be removed in the future or renamed.

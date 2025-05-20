@@ -104,26 +104,6 @@ const codegemmaFimTemplate: AutocompleteTemplate = {
 	},
 }
 
-// https://arxiv.org/pdf/2402.19173.pdf section 5.1
-// const starcoder2FimTemplate: AutocompleteTemplate = {
-// 	template: (prefix, suffix, filename, reponame, language, snippets, workspaceUris): string => {
-// 		const otherFiles =
-// 			snippets.length === 0
-// 				? ""
-// 				: `<file_sep>${snippets
-// 						.map((snippet) => {
-// 							return snippet.content
-// 						})
-// 						.join("<file_sep>")}<file_sep>`
-
-// 		const prompt = `${otherFiles}<fim_prefix>${prefix}<fim_suffix>${suffix}<fim_middle>`
-// 		return prompt
-// 	},
-// 	completionOptions: {
-// 		stop: ["<fim_prefix>", "<fim_suffix>", "<fim_middle>", "<file_sep>", "<|endoftext|>"],
-// 	},
-// }
-
 const codeLlamaFimTemplate: AutocompleteTemplate = {
 	template: "<PRE> {{{prefix}}} <SUF>{{{suffix}}} <MID>",
 	completionOptions: { stop: ["<PRE>", "<SUF>", "<MID>", "<EOT>"] },
