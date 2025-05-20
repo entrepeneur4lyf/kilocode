@@ -323,8 +323,13 @@
 					"when": "view == kilo-code.SidebarProvider"
 				},
 				{
-					"command": "kilo-code.historyButtonClicked",
+					"command": "kilo-code.promptsButtonClicked",
 					"group": "navigation@2",
+					"when": "view == kilo-code.SidebarProvider"
+				},
+				{
+					"command": "kilo-code.historyButtonClicked",
+					"group": "navigation@3",
 					"when": "view == kilo-code.SidebarProvider"
 				},
 				{
