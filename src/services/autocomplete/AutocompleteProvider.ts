@@ -42,7 +42,7 @@ export class AutocompleteProvider {
 		this.cache = new CompletionCache()
 		this.config = new AutocompleteConfig()
 		this.contextGatherer = new ContextGatherer()
-		this.promptRenderer = new PromptRenderer()
+		this.promptRenderer = new PromptRenderer({}, DEFAULT_OLLAMA_MODEL)
 
 		this.decorationType = vscode.window.createTextEditorDecorationType({
 			after: {
@@ -426,6 +426,7 @@ export class AutocompleteProvider {
 		}
 
 		// Create the stream using the API handler's createMessage method
+		// Note: Stop tokens are embedded in the prompt template format instead of passed directly
 		const stream = this.apiHandler.createMessage(systemPrompt, [
 			{ role: "user", content: [{ type: "text", text: prompt }] },
 		])

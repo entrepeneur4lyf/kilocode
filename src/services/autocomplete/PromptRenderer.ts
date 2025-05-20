@@ -1,4 +1,8 @@
 import { CodeContext } from "./ContextGatherer"
+import { getTemplateForModel } from "./templating/AutocompleteTemplate"
+import { getStopTokens } from "./templating/getStopTokens"
+import * as vscode from "vscode"
+import { getLanguageInfo } from "./constants/AutocompleteLanguageInfo"
 
 /**
  * Interface for prompt options
@@ -24,64 +28,77 @@ export class PromptRenderer {
 		includeDefinitions: true,
 		multilineCompletions: "auto",
 	}
+	private modelName: string = "qwen2.5-coder:1.5b"
 
 	/**
 	 * Create a new prompt renderer
 	 * @param options Prompt options
+	 * @param modelName Model name for template selection
 	 */
-	constructor(options: Partial<PromptOptions> = {}) {
+	constructor(options: Partial<PromptOptions> = {}, modelName: string = "qwen2.5-coder:1.5b") {
 		this.defaultOptions = { ...this.defaultOptions, ...options }
+		this.modelName = modelName
 	}
 
 	/**
-	 * Render a prompt for autocomplete
+	 * Render a prompt for autocomplete using templates based on the model
 	 * @param context Code context
 	 * @param options Prompt options
 	 * @returns Rendered prompt
 	 */
 	renderPrompt(context: CodeContext, options: Partial<PromptOptions> = {}): string {
 		const mergedOptions = { ...this.defaultOptions, ...options }
-		const { language, includeImports, includeDefinitions, multilineCompletions } = mergedOptions
+		const { language } = mergedOptions
 
-		// Start building the prompt
-		let prompt = `You are an AI coding assistant that provides accurate and helpful code completions.
-Language: ${language}
+		// Get the appropriate template for the model
+		const template = getTemplateForModel(this.modelName)
 
-`
-
-		// Add imports if requested
-		if (includeImports && context.imports.length > 0) {
-			prompt += `Relevant imports:\n${context.imports.join("\n")}\n\n`
-		}
-
-		// Add definitions if requested
-		if (includeDefinitions && context.definitions.length > 0) {
-			prompt += `Relevant definitions:\n`
-			for (const def of context.definitions) {
-				prompt += `// From ${def.filepath}\n${def.content}\n\n`
-			}
-		}
-
-		// Add preceding code context
+		// Construct prefix and suffix from context
+		let prefix = ""
 		if (context.precedingLines.length > 0) {
-			prompt += `Preceding code:\n${context.precedingLines.join("\n")}\n`
+			prefix += `${context.precedingLines.join("\n")}\n`
 		}
+		prefix += context.currentLine
 
-		// Add current line and cursor position
-		prompt += `Current line: ${context.currentLine}\n`
-
-		// Add following code context if available
+		// For suffix, use following lines
+		let suffix = ""
 		if (context.followingLines.length > 0) {
-			prompt += `Following code:\n${context.followingLines.join("\n")}\n`
+			suffix = `\n${context.followingLines.join("\n")}`
 		}
 
-		// Add instructions based on completion mode
-		if (multilineCompletions === true) {
-			prompt += `\nComplete the current line and continue with additional lines if appropriate. Focus on providing accurate, idiomatic ${language} code.`
-		} else if (multilineCompletions === "auto") {
-			prompt += `\nComplete the current line. If the line appears to be the start of a block (like a function, loop, or conditional), you may continue with the implementation of that block. Focus on providing accurate, idiomatic ${language} code.`
+		// Include imports if requested
+		if (mergedOptions.includeImports && context.imports.length > 0) {
+			prefix = `${context.imports.join("\n")}\n\n${prefix}`
+		}
+
+		// Include definitions if requested
+		if (mergedOptions.includeDefinitions && context.definitions.length > 0) {
+			let definitionsText = ""
+			for (const def of context.definitions) {
+				definitionsText += `// From ${def.filepath}\n${def.content}\n\n`
+			}
+			prefix = `${definitionsText}${prefix}`
+		}
+
+		// Create prompt using template
+		let prompt: string
+		if (typeof template.template === "string") {
+			// Use Handlebars-style template format without requiring Handlebars
+			prompt = template.template.replace("{{{prefix}}}", prefix).replace("{{{suffix}}}", suffix)
 		} else {
-			prompt += `\nComplete only the current line with accurate, idiomatic ${language} code.`
+			// Use function template
+			const filepath = vscode.window.activeTextEditor?.document.uri.fsPath || ""
+			const reponame = vscode.workspace.workspaceFolders?.[0]?.name || ""
+
+			prompt = template.template(
+				prefix,
+				suffix,
+				filepath,
+				reponame,
+				language,
+				[], // No snippets for now
+				[], // No workspace URIs for now
+			)
 		}
 
 		return prompt
@@ -96,6 +113,16 @@ Language: ${language}
 Your task is to complete the code at the cursor position.
 Provide only the completion text, without any explanations or markdown formatting.
 The completion should be valid, syntactically correct code that fits the context.`
+	}
+
+	/**
+	 * Get the stop tokens for the current model
+	 * @returns Array of stop tokens
+	 */
+	getStopTokens(): string[] {
+		const template = getTemplateForModel(this.modelName)
+		const langInfo = getLanguageInfo(this.defaultOptions.language)
+		return getStopTokens(template.completionOptions, langInfo, this.modelName)
 	}
 
 	/**
