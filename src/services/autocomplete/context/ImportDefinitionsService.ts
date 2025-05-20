@@ -1,4 +1,4 @@
-import { RangeInFileWithContents } from ".."
+import { RangeInFileWithContents } from "../ide-types"
 import { findUriInDirs } from "../templating/uri"
 import { IDE } from "../utils/ide"
 import { PrecalculatedLruCache } from "../utils/LruCache"
@@ -98,4 +98,3 @@ export class ImportDefinitionsService {
 		return fileInfo
 	}
 }
- 

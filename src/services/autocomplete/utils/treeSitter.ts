@@ -3,7 +3,7 @@ import path from "path"
 
 import Parser, { Language } from "web-tree-sitter"
 import { getUriFileExtension } from "../templating/uri"
-import { FileSymbolMap, SymbolWithRange } from ".."
+import { FileSymbolMap, SymbolWithRange } from "../ide-types"
 import { readFile } from "node:fs/promises"
 
 export enum LanguageName {

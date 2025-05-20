@@ -1,6 +1,6 @@
 import { Position } from "vscode"
 import { AutocompleteCodeSnippet } from "./snippets/types"
-import { RangeInFile, Range, RangeInFileWithContents } from "."
+import { RangeInFile, Range, RangeInFileWithContents } from "./ide-types"
 
 export interface BaseCompletionOptions {
 	temperature?: number
@@ -19,8 +19,8 @@ export interface BaseCompletionOptions {
 	raw?: boolean
 	stream?: boolean
 	prediction?: Prediction
-	tools?: Tool[]
-	toolChoice?: ToolChoice
+	// tools?: Tool[]
+	// toolChoice?: ToolChoice
 	reasoning?: boolean
 	reasoningBudgetTokens?: number
 	promptCaching?: boolean
@@ -54,12 +54,12 @@ export interface AutocompleteInput {
 	injectDetails?: string
 }
 
-interface ToolChoice {
-	type: "function"
-	function: {
-		name: string
-	}
-}
+// interface ToolChoice {
+// 	type: "function"
+// 	function: {
+// 		name: string
+// 	}
+// }
 
 export interface Prediction {
 	type: "content"
@@ -71,25 +71,25 @@ export interface Prediction {
 		  }[]
 }
 
-export interface Tool {
-	type: "function"
-	function: {
-		name: string
-		description?: string
-		parameters?: Record<string, any>
-		strict?: boolean | null
-	}
+// export interface Tool {
+// 	type: "function"
+// 	function: {
+// 		name: string
+// 		description?: string
+// 		parameters?: Record<string, any>
+// 		strict?: boolean | null
+// 	}
 
-	displayTitle: string
-	wouldLikeTo?: string
-	isCurrently?: string
-	hasAlready?: string
-	readonly: boolean
-	isInstant?: boolean
-	uri?: string
-	faviconUrl?: string
-	group: string
-}
+// 	displayTitle: string
+// 	wouldLikeTo?: string
+// 	isCurrently?: string
+// 	hasAlready?: string
+// 	readonly: boolean
+// 	isInstant?: boolean
+// 	uri?: string
+// 	faviconUrl?: string
+// 	group: string
+// }
 
 /**
  * @deprecated This type should be removed in the future or renamed.
