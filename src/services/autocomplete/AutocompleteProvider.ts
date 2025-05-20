@@ -2,9 +2,9 @@ import * as vscode from "vscode"
 import { AutocompleteConfig } from "./AutocompleteConfig"
 import { ApiHandler, buildApiHandler } from "../../api"
 import { ProviderSettings } from "../../shared/api"
-import { CompletionCache } from "./CompletionCache"
 import { ContextGatherer } from "./ContextGatherer"
 import { PromptRenderer } from "./PromptRenderer"
+import { CompletionCache } from "./utils/CompletionCache"
 
 // Default configuration values
 const DEFAULT_DEBOUNCE_DELAY = 150
@@ -207,31 +207,9 @@ export class AutocompleteProvider {
 					)
 
 					if (completionText) {
-						// Get the current line text up to the cursor position
 						const lineText = document.lineAt(position.line).text
 						const textBeforeCursor = lineText.substring(0, position.character)
-
-						// Check if the completion starts with text already on the line
-						let finalCompletionText = completionText
-						if (textBeforeCursor.length > 0) {
-							// Find the longest common prefix
-							let commonPrefixLength = 0
-							while (
-								commonPrefixLength < textBeforeCursor.length &&
-								commonPrefixLength < completionText.length &&
-								textBeforeCursor[textBeforeCursor.length - 1 - commonPrefixLength] ===
-									completionText[commonPrefixLength]
-							) {
-								commonPrefixLength++
-							}
-
-							// Remove the common prefix from the completion
-							if (commonPrefixLength > 0) {
-								finalCompletionText = completionText.substring(commonPrefixLength)
-							}
-						}
-
-						// Update the preview text
+						const finalCompletionText = this.removeMatchingPrefix(textBeforeCursor, completionText)
 						this.updateAutocompletePreview(editor, finalCompletionText)
 					}
 				} catch (error) {
