@@ -72,6 +72,11 @@ export class ImportDefinitionsService {
 			}
 		}
 
+		
+
+
+		setTimeout(() => {}, 400)
+		
 		const matches = query?.matches(ast.rootNode)
 
 		const fileInfo: FileInfo = {
