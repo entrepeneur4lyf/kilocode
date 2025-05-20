@@ -1,0 +1,10 @@
+{
+	"mcpServers": {
+		"translation-mcp-server": {
+			"type": "sse",
+			"url": "http://localhost:3010/mcp",
+			"timeout": 60,
+			"alwaysAllow": ["translate_i18n_key", "move_i18n_key", "list_locales"]
+		}
+	}
+}

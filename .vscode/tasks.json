@@ -1,11 +1,54 @@
-// See https://go.microsoft.com/fwlink/?LinkId=733558
-// for the documentation about the tasks.json format
 {
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "Install Dependencies",
+			"type": "shell",
+			"command": "if [ ! -d \"${workspaceFolder}/node_modules\" ] || [ ! -d \"${workspaceFolder}/webview-ui/node_modules\" ] || [ ! -d \"${workspaceFolder}/repo-mcp-server/node_modules\" ]; then npm run install:all; else echo \"Dependencies are already installed.\"; fi",
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated",
+				"clear": true
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Local MCP Server",
+			"type": "shell",
+			"command": "cd ${workspaceFolder}/repo-mcp-server && npm run watch",
+			"dependsOn": ["Install Dependencies"],
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated",
+				"group": "mcp-servers",
+				"showReuseMessage": false,
+				"clear": true
+			},
+			"problemMatcher": {
+				"owner": "mcp",
+				"pattern": {
+					"regexp": "^.*$"
+				},
+				"background": {
+					"activeOnStart": true,
+					"beginsPattern": "Express server listening on port",
+					"endsPattern": "✅ MCP Translation server is ready to process requests"
+				}
+			},
+			"isBackground": true,
+			"runOptions": {
+				"runOn": "folderOpen"
+			}
+		},
+		{
 			"label": "watch",
-			"dependsOn": ["npm: dev", "npm: watch:tsc", "npm: watch:esbuild"],
+			"dependsOn": [
+				"Install Dependencies",
+				"Local MCP Server",
+				"npm: dev",
+				"npm: watch:tsc",
+				"npm: watch:esbuild"
+			],
 			"presentation": {
 				"reveal": "never"
 			},
@@ -21,6 +64,7 @@
 			"label": "npm: dev",
 			"type": "npm",
 			"script": "dev",
+			"dependsOn": ["Install Dependencies"],
 			"group": "build",
 			"problemMatcher": {
 				"owner": "vite",
@@ -43,6 +87,7 @@
 			"label": "npm: watch:esbuild",
 			"type": "npm",
 			"script": "watch:esbuild",
+			"dependsOn": ["Install Dependencies"],
 			"group": "build",
 			"problemMatcher": {
 				"owner": "esbuild",
@@ -65,6 +110,7 @@
 			"label": "npm: watch:tsc",
 			"type": "npm",
 			"script": "watch:tsc",
+			"dependsOn": ["Install Dependencies"],
 			"group": "build",
 			"problemMatcher": "$tsc-watch",
 			"isBackground": true,
