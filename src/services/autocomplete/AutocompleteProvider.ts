@@ -1,7 +1,6 @@
 import * as vscode from "vscode"
 import { AutocompleteConfig } from "./AutocompleteConfig"
 import { ApiHandler, buildApiHandler } from "../../api"
-import { ProviderSettings } from "../../shared/api"
 import { ContextGatherer } from "./ContextGatherer"
 import { PromptRenderer } from "./PromptRenderer"
 import { CompletionCache } from "./utils/CompletionCache"
@@ -14,7 +13,7 @@ const MIN_TYPED_LENGTH_FOR_COMPLETION = 4
 
 export class AutocompleteProvider {
 	// API and completion state
-	private apiHandler: ApiHandler | null = null
+	private apiHandler: ApiHandler
 	private enabled: boolean = true
 	private activeCompletionId: string | null = null
 
@@ -44,6 +43,12 @@ export class AutocompleteProvider {
 		this.contextGatherer = new ContextGatherer()
 		this.promptRenderer = new PromptRenderer({}, DEFAULT_OLLAMA_MODEL)
 
+		this.apiHandler = buildApiHandler({
+			apiProvider: "ollama",
+			ollamaModelId: DEFAULT_OLLAMA_MODEL,
+			ollamaBaseUrl: DEFAULT_OLLAMA_URL,
+		})
+
 		this.decorationType = vscode.window.createTextEditorDecorationType({
 			after: {
 				color: new vscode.ThemeColor("editorGhostText.foreground"),
@@ -57,8 +62,6 @@ export class AutocompleteProvider {
 	 * Register the autocomplete provider with VSCode
 	 */
 	register(context: vscode.ExtensionContext): vscode.Disposable {
-		this.initializeApiHandler()
-
 		// Register event handlers for preview text
 		this.registerTextEditorEvents(context)
 
@@ -100,8 +103,6 @@ export class AutocompleteProvider {
 		context.subscriptions.push(
 			vscode.workspace.onDidChangeConfiguration((e) => {
 				if (e.affectsConfiguration("kilo-code.autocomplete")) {
-					this.apiHandler = null
-
 					const config = vscode.workspace.getConfiguration("kilo-code")
 					this.debounceDelay = config.get("autocomplete.debounceDelay") || DEFAULT_DEBOUNCE_DELAY
 				}
@@ -276,17 +277,6 @@ export class AutocompleteProvider {
 		const completionId = crypto.randomUUID()
 		this.activeCompletionId = completionId
 
-		// Ensure API handler is initialized
-		if (!this.apiHandler) {
-			this.apiHandler = await this.initializeApiHandler()
-		}
-
-		// If we still don't have an API handler, we can't generate completions
-		if (!this.apiHandler) {
-			console.error("Failed to initialize API handler for completion generation")
-			return null
-		}
-
 		// Load configuration
 		const conf = await this.config.loadConfig()
 		const useImports = conf?.useImports || false
@@ -394,15 +384,6 @@ export class AutocompleteProvider {
 			return false
 		}
 
-		// Ensure API handler is initialized
-		if (!this.apiHandler) {
-			this.apiHandler = await this.initializeApiHandler()
-		}
-
-		if (!this.apiHandler) {
-			return { completion: "", isCancelled: true }
-		}
-
 		// Create the stream using the API handler's createMessage method
 		// Note: Stop tokens are embedded in the prompt template format instead of passed directly
 		const stream = this.apiHandler.createMessage(systemPrompt, [
@@ -498,30 +479,6 @@ export class AutocompleteProvider {
 			const glob = new vscode.RelativePattern(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "", pattern)
 			return vscode.languages.match({ pattern: glob }, document)
 		})
-	}
-
-	/**
-	 * Initialize the API handler and return it
-	 */
-	private async initializeApiHandler(): Promise<ApiHandler | null> {
-		if (this.apiHandler) {
-			return this.apiHandler
-		}
-
-		try {
-			const providerSettings: ProviderSettings = {
-				apiProvider: "ollama",
-				ollamaModelId: DEFAULT_OLLAMA_MODEL,
-				ollamaBaseUrl: DEFAULT_OLLAMA_URL,
-			}
-
-			const apiHandler = buildApiHandler(providerSettings)
-			this.apiHandler = apiHandler
-			return apiHandler
-		} catch (error) {
-			console.error("Error initializing API handler:", error)
-			return null
-		}
 	}
 
 	/**
