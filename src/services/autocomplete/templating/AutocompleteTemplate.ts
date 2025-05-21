@@ -1,15 +1,19 @@
-//PLANREF: continue/core/autocomplete/templating/index.ts
+// AIDIFF: Updated to align with continue/core/autocomplete/templating/AutocompleteTemplate.ts
+// PLANREF: continue/core/autocomplete/templating/AutocompleteTemplate.ts
 // Fill in the middle prompts
 
 import { CompletionOptions } from "../types.js"
-import { getLastNUriRelativePathParts } from "./uri.js"
+import { getLastNUriRelativePathParts, getShortestUniqueRelativeUriPaths } from "./uri.js"
+import { AutocompleteSnippet, AutocompleteCodeSnippet, AutocompleteSnippetType } from "./snippetTypes.js"
 
+// AIDIFF: Updated interface to match continue/
 export interface AutocompleteTemplate {
 	compilePrefixSuffix?: (
 		prefix: string,
 		suffix: string,
 		filepath: string,
 		reponame: string,
+		snippets: AutocompleteSnippet[], // AIDIFF: Added snippets
 		workspaceUris: string[],
 	) => [string, string]
 	template:
@@ -20,13 +24,15 @@ export interface AutocompleteTemplate {
 				filepath: string,
 				reponame: string,
 				language: string,
+				snippets: AutocompleteSnippet[], // AIDIFF: Added snippets
 				workspaceUris: string[],
 		  ) => string)
 	completionOptions?: Partial<CompletionOptions>
 }
 
 const endOfText = "<|end" + "of" + "text|>" // workaround for https://github.com/Kilo-Org/kilocode/issues/452
-// https://huggingface.co/stabilityai/stable-code-3b
+
+// PLANREF: continue/core/autocomplete/templating/AutocompleteTemplate.ts (stableCodeFimTemplate)
 const stableCodeFimTemplate: AutocompleteTemplate = {
 	template: "<fim_prefix>{{{prefix}}}<fim_suffix>{{{suffix}}}<fim_middle>",
 	completionOptions: {
@@ -34,9 +40,7 @@ const stableCodeFimTemplate: AutocompleteTemplate = {
 	},
 }
 
-// https://github.com/QwenLM/Qwen2.5-Coder?tab=readme-ov-file#3-file-level-code-completion-fill-in-the-middle
-// This issue asks about the use of <|repo_name|> and <|file_sep|> together with <|fim_prefix|>, <|fim_suffix|> and <|fim_middle|>
-// https://github.com/QwenLM/Qwen2.5-Coder/issues/343
+// PLANREF: continue/core/autocomplete/templating/AutocompleteTemplate.ts (qwenCoderFimTemplate)
 const qwenCoderFimTemplate: AutocompleteTemplate = {
 	template: "<|fim_prefix|>{{{prefix}}}<|fim_suffix|>{{{suffix}}}<|fim_middle|>",
 	completionOptions: {
@@ -54,21 +58,23 @@ const qwenCoderFimTemplate: AutocompleteTemplate = {
 	},
 }
 
+// PLANREF: continue/core/autocomplete/templating/AutocompleteTemplate.ts (seedCoderFimTemplate)
 const seedCoderFimTemplate: AutocompleteTemplate = {
 	template: "<[fim-prefix]>{{{prefix}}}<[fim-suffix]>{{{suffix}}}<[fim-middle]>",
 	completionOptions: {
 		stop: [
-			"<[end▁of▁sentence]>",
+			"<[end of sentence]>",
 			"<[fim-prefix]>",
 			"<[fim-middle]>",
 			"<[fim-suffix]>",
-			"<[PAD▁TOKEN]>",
-			"<[SEP▁TOKEN]>",
-			"<[begin▁of▁sentence]>",
+			"<[PAD TOKEN]>",
+			"<[SEP TOKEN]>",
+			"<[begin of sentence]>",
 		],
 	},
 }
 
+// PLANREF: continue/core/autocomplete/templating/AutocompleteTemplate.ts (codestralFimTemplate)
 // const codestralFimTemplate: AutocompleteTemplate = {
 // 	template: "[SUFFIX]{{{suffix}}}[PREFIX]{{{prefix}}}",
 // 	completionOptions: {
@@ -76,12 +82,49 @@ const seedCoderFimTemplate: AutocompleteTemplate = {
 // 	},
 // }
 
+// PLANREF: continue/core/autocomplete/templating/AutocompleteTemplate.ts (codestralMultifileFimTemplate)
 const codestralMultifileFimTemplate: AutocompleteTemplate = {
-	compilePrefixSuffix: (prefix, suffix, filepath, reponame, workspaceUris): [string, string] => {
-		if (suffix.trim().length === 0 && prefix.trim().length === 0) {
-			return [`+++++ ${getLastNUriRelativePathParts(workspaceUris, filepath, 2)}\n${prefix}`, suffix]
+	compilePrefixSuffix: (
+		prefix,
+		suffix,
+		filepath,
+		reponame,
+		snippets, // AIDIFF: Added snippets
+		workspaceUris,
+	): [string, string] => {
+		// AIDIFF: Helper function from continue/
+		function getFileName(snippet: { uri: string; uniquePath: string }) {
+			return snippet.uri.startsWith("file://") ? snippet.uniquePath : snippet.uri
 		}
-		return [prefix, suffix]
+
+		if (snippets.length === 0) {
+			if (suffix.trim().length === 0 && prefix.trim().length === 0) {
+				return [`+++++ ${getLastNUriRelativePathParts(workspaceUris, filepath, 2)}\n${prefix}`, suffix]
+			}
+			return [prefix, suffix]
+		}
+
+		// AIDIFF: Logic from continue/ for handling multiple files
+		const relativePaths = getShortestUniqueRelativeUriPaths(
+			[
+				...snippets.map((snippet) =>
+					"filepath" in snippet && snippet.filepath ? snippet.filepath : "file:///Untitled.txt",
+				),
+				filepath,
+			],
+			workspaceUris,
+		)
+
+		const otherFiles = snippets
+			.map((snippet, i) => {
+				if (snippet.type === AutocompleteSnippetType.Diff) {
+					return snippet.content
+				}
+				return `+++++ ${getFileName(relativePaths[i])} \n${snippet.content}`
+			})
+			.join("\n\n")
+
+		return [`${otherFiles}\n\n+++++ ${getFileName(relativePaths[relativePaths.length - 1])}\n${prefix}`, suffix]
 	},
 	template: (prefix: string, suffix: string): string => {
 		return `[SUFFIX]${suffix}[PREFIX]${prefix}`
@@ -91,6 +134,69 @@ const codestralMultifileFimTemplate: AutocompleteTemplate = {
 	},
 }
 
+// PLANREF: continue/core/autocomplete/templating/AutocompleteTemplate.ts (mercuryMultifileFimTemplate)
+const mercuryMultifileFimTemplate: AutocompleteTemplate = {
+	compilePrefixSuffix: (
+		prefix,
+		suffix,
+		filepath,
+		reponame,
+		snippets, // AIDIFF: Added snippets
+		workspaceUris,
+	): [string, string] => {
+		function getFileName(snippet: { uri: string; uniquePath: string }) {
+			return snippet.uri.startsWith("file://") ? snippet.uniquePath : snippet.uri
+		}
+
+		// Our current snippet format doesn't work well with mercury. We need to clean this up
+		// AIDIFF: Keep snippets for now, but acknowledge continue's comment
+		// snippets = []; // Original line from continue/
+
+		if (snippets.length === 0) {
+			if (suffix.trim().length === 0 && prefix.trim().length === 0) {
+				return [
+					`<|file_sep|>${getLastNUriRelativePathParts(workspaceUris, filepath, 2)}\n<|fim_prefix|>${prefix}`,
+					suffix,
+				]
+			}
+			return [`<|fim_prefix|>${prefix}`, suffix]
+		}
+
+		const relativePaths = getShortestUniqueRelativeUriPaths(
+			[
+				...snippets.map((snippet) =>
+					"filepath" in snippet && snippet.filepath ? snippet.filepath : "file:///Untitled.txt",
+				),
+				filepath,
+			],
+			workspaceUris,
+		)
+
+		const otherFiles = snippets
+			.map((snippet, i) => {
+				if (snippet.type === AutocompleteSnippetType.Diff) {
+					return snippet.content
+				}
+				return `<|file_sep|>${getFileName(relativePaths[i])} \n${snippet.content}`
+			})
+			.join("\n\n")
+
+		return [
+			`${otherFiles}${otherFiles ? "\n\n" : ""}<|file_sep|>${getFileName(
+				relativePaths[relativePaths.length - 1],
+			)}\n<|fim_prefix|>${prefix}`,
+			suffix,
+		]
+	},
+	template: (prefix: string, suffix: string): string => {
+		return `${prefix}<|fim_suffix|>${suffix}<|fim_middle|>`
+	},
+	completionOptions: {
+		stop: ["<|fim_suffix|>", "<|fim_middle|>", "<|file_sep|>"], // AIDIFF: Added common stop tokens
+	},
+}
+
+// PLANREF: continue/core/autocomplete/templating/AutocompleteTemplate.ts (codegemmaFimTemplate)
 const codegemmaFimTemplate: AutocompleteTemplate = {
 	template: "<|fim_prefix|>{{{prefix}}}<|fim_suffix|>{{{suffix}}}<|fim_middle|>",
 	completionOptions: {
@@ -98,28 +204,95 @@ const codegemmaFimTemplate: AutocompleteTemplate = {
 	},
 }
 
+// PLANREF: continue/core/autocomplete/templating/AutocompleteTemplate.ts (starcoder2FimTemplate)
+const starcoder2FimTemplate: AutocompleteTemplate = {
+	template: (
+		prefix,
+		suffix,
+		filename, // AIDIFF: Changed from filepath to filename for consistency with continue/
+		reponame,
+		language,
+		snippets, // AIDIFF: Added snippets
+		_workspaceUris, // AIDIFF: Marked as unused to satisfy linter
+	): string => {
+		const otherFiles =
+			snippets.length === 0
+				? ""
+				: `<file_sep>${snippets
+						.map((snippet) => {
+							return snippet.content
+						})
+						.join("<file_sep>")}<file_sep>`
+
+		const prompt = `${otherFiles}<fim_prefix>${prefix}<fim_suffix>${suffix}<fim_middle>`
+		return prompt
+	},
+	completionOptions: {
+		stop: ["<fim_prefix>", "<fim_suffix>", "<fim_middle>", "<file_sep>", endOfText],
+	},
+}
+
+// PLANREF: continue/core/autocomplete/templating/AutocompleteTemplate.ts (codeLlamaFimTemplate)
 const codeLlamaFimTemplate: AutocompleteTemplate = {
 	template: "<PRE> {{{prefix}}} <SUF>{{{suffix}}} <MID>",
 	completionOptions: { stop: ["<PRE>", "<SUF>", "<MID>", "<EOT>"] },
 }
 
-// https://huggingface.co/deepseek-ai/deepseek-coder-1.3b-base
+// PLANREF: continue/core/autocomplete/templating/AutocompleteTemplate.ts (deepseekFimTemplate)
 const deepseekFimTemplate: AutocompleteTemplate = {
-	template: "<｜fim▁begin｜>{{{prefix}}}<｜fim▁hole｜>{{{suffix}}}<｜fim▁end｜>",
+	template: "<｜fim begin｜>{{{prefix}}}<｜fim hole｜>{{{suffix}}}<｜fim end｜>",
 	completionOptions: {
-		stop: ["<｜fim▁begin｜>", "<｜fim▁hole｜>", "<｜fim▁end｜>", "//", "<｜end▁of▁sentence｜>"],
+		stop: ["<｜fim begin｜>", "<｜fim hole｜>", "<｜fim end｜>", "//", "<｜end of sentence｜>"],
 	},
 }
 
+// PLANREF: continue/core/autocomplete/templating/AutocompleteTemplate.ts (codegeexFimTemplate)
+const codegeexFimTemplate: AutocompleteTemplate = {
+	template: (
+		prefix,
+		suffix,
+		filepath,
+		reponame,
+		language,
+		allSnippets, // AIDIFF: Added snippets
+		workspaceUris,
+	): string => {
+		const snippets = allSnippets.filter(
+			(snippet) => snippet.type === AutocompleteSnippetType.Code,
+		) as AutocompleteCodeSnippet[]
+
+		const relativePaths = getShortestUniqueRelativeUriPaths(
+			[...snippets.map((snippet) => snippet.filepath), filepath],
+			workspaceUris,
+		)
+		const baseTemplate = `###PATH:${
+			relativePaths[relativePaths.length - 1].uniquePath // AIDIFF: Use uniquePath
+		}\n###LANGUAGE:${language}\n###MODE:BLOCK\n<|code_suffix|>${suffix}<|code_prefix|>${prefix}<|code_middle|>`
+		if (snippets.length === 0) {
+			return `<|user|>\n${baseTemplate}<|assistant|>\n`
+		}
+		const references = `###REFERENCE:\n${snippets
+			.map((snippet, i) => `###PATH:${relativePaths[i].uniquePath}\n${snippet.content}\n`) // AIDIFF: Use uniquePath
+			.join("###REFERENCE:\n")}`
+		const prompt = `<|user|>\n${references}\n${baseTemplate}<|assistant|>\n`
+		return prompt
+	},
+	completionOptions: {
+		stop: ["<|user|>", "<|code_suffix|>", "<|code_prefix|>", "<|code_middle|>", "<|assistant|>", endOfText],
+	},
+}
+
+// PLANREF: continue/core/autocomplete/templating/AutocompleteTemplate.ts (gptAutocompleteTemplate)
 // const gptAutocompleteTemplate: AutocompleteTemplate = {
 // 	template: `\`\`\`
 // {{{prefix}}}[BLANK]{{{suffix}}}
 // \`\`\`
-
+//
 // Fill in the blank to complete the code block. Your response should include only the code to replace [BLANK], without surrounding backticks.`,
 // 	completionOptions: { stop: ["\n"] },
 // }
 
+// PLANREF: continue/core/autocomplete/templating/AutocompleteTemplate.ts (holeFillerTemplate)
 const holeFillerTemplate: AutocompleteTemplate = {
 	template: (prefix: string, suffix: string) => {
 		// From https://github.com/VictorTaelin/AI-scripts
@@ -217,8 +390,17 @@ function hypothenuse(a, b) {
 	},
 }
 
+// AIDIFF: Updated to match continue/core/autocomplete/templating/AutocompleteTemplate.ts
 export function getTemplateForModel(model: string): AutocompleteTemplate {
 	const lowerCaseModel = model.toLowerCase()
+
+	// PLANREF: Logic from continue/core/autocomplete/templating/AutocompleteTemplate.ts getTemplateForModel
+	// if (lowerCaseModel.includes("starcoder2")) { // AIDIFF: Starcoder2 is handled by the generic starcoder block below in continue's logic, but could be specific if needed
+	//   return starcoder2FimTemplate;
+	// }
+	if (lowerCaseModel.includes("mercury")) {
+		return mercuryMultifileFimTemplate
+	}
 
 	if (lowerCaseModel.includes("qwen") && lowerCaseModel.includes("coder")) {
 		return qwenCoderFimTemplate
@@ -229,14 +411,19 @@ export function getTemplateForModel(model: string): AutocompleteTemplate {
 	}
 
 	if (
-		lowerCaseModel.includes("starcoder") ||
+		lowerCaseModel.includes("starcoder") || // AIDIFF: Includes starcoder2 implicitly
 		lowerCaseModel.includes("star-coder") ||
 		lowerCaseModel.includes("starchat") ||
 		lowerCaseModel.includes("octocoder") ||
-		lowerCaseModel.includes("stable") ||
-		lowerCaseModel.includes("codeqwen") ||
-		lowerCaseModel.includes("qwen")
+		lowerCaseModel.includes("stable") || // This was stableCodeFimTemplate
+		lowerCaseModel.includes("codeqwen") || // This was also stableCodeFimTemplate
+		lowerCaseModel.includes("qwen") // This was also stableCodeFimTemplate (non-coder qwen)
 	) {
+		// AIDIFF: continue/ uses stableCodeFimTemplate for these.
+		// If starcoder2 needs specific handling, it should be added above.
+		if (lowerCaseModel.includes("starcoder2")) {
+			return starcoder2FimTemplate // AIDIFF: Explicitly use starcoder2 if identified
+		}
 		return stableCodeFimTemplate
 	}
 
@@ -256,6 +443,10 @@ export function getTemplateForModel(model: string): AutocompleteTemplate {
 		return deepseekFimTemplate
 	}
 
+	if (lowerCaseModel.includes("codegeex")) {
+		return codegeexFimTemplate
+	}
+
 	if (
 		lowerCaseModel.includes("gpt") ||
 		lowerCaseModel.includes("davinci-002") ||
@@ -266,5 +457,6 @@ export function getTemplateForModel(model: string): AutocompleteTemplate {
 		return holeFillerTemplate
 	}
 
+	// AIDIFF: Default to stableCodeFimTemplate as in continue/
 	return stableCodeFimTemplate
 }

@@ -51,3 +51,13 @@ export interface SymbolWithRange extends RangeInFile {
 }
 
 export type FileSymbolMap = Record<string, SymbolWithRange[]>
+
+// AIDIFF: Added IdeInfo interface to support getIdeInfo() method in the IDE abstraction layer.
+// PLANREF: continue/core/index.d.ts (IdeInfo)
+export interface IdeInfo {
+	ideType: string // e.g., "vscode", "jetbrains"
+	name: string // e.g., "Visual Studio Code"
+	version: string // e.g., "1.85.1"
+	remoteName?: string // e.g., "ssh-remote", undefined for local
+	extensionVersion: string // Version of this extension
+}
