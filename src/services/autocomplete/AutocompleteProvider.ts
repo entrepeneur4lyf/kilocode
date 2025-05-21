@@ -33,11 +33,13 @@ export class AutocompleteProvider {
 	// Preview display state
 	private currentAutocompletePreview: string = ""
 	private isShowingAutocompletePreview: boolean = false
+	private isLoadingCompletion: boolean = false
 	private autocompletePreviewVisibleContextKey: string = "kilo-code.autocompletePreviewVisible"
 	private onCursorMoveCallback: ((editor: vscode.TextEditor) => void) | null = null
 
 	// Decoration for preview display
 	private decorationType: vscode.TextEditorDecorationType
+	private loadingDecorationType: vscode.TextEditorDecorationType
 
 	constructor() {
 		this.cache = new CompletionCache()
@@ -55,6 +57,15 @@ export class AutocompleteProvider {
 			after: {
 				color: new vscode.ThemeColor("editorGhostText.foreground"),
 				fontStyle: "italic",
+			},
+			rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen,
+		})
+
+		this.loadingDecorationType = vscode.window.createTextEditorDecorationType({
+			after: {
+				color: new vscode.ThemeColor("editorGhostText.foreground"),
+				fontStyle: "italic",
+				contentText: "⏳",
 			},
 			rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen,
 		})
@@ -132,7 +143,8 @@ export class AutocompleteProvider {
 		context.subscriptions.push(
 			vscode.window.onDidChangeTextEditorSelection((e) => {
 				if (e.textEditor) {
-					if (this.isShowingAutocompletePreview) {
+					// Clear both preview and loading indicator when cursor moves
+					if (this.isShowingAutocompletePreview || this.isLoadingCompletion) {
 						this.clearAutocompletePreview()
 					}
 
@@ -146,7 +158,7 @@ export class AutocompleteProvider {
 		// Register document change event
 		context.subscriptions.push(
 			vscode.workspace.onDidChangeTextDocument((_e) => {
-				if (this.isShowingAutocompletePreview) {
+				if (this.isShowingAutocompletePreview || this.isLoadingCompletion) {
 					this.clearAutocompletePreview()
 				}
 			}),
@@ -183,6 +195,25 @@ export class AutocompleteProvider {
 	}
 
 	/**
+	 * Shows the loading indicator at the current cursor position
+	 */
+	private showLoadingIndicator(editor: vscode.TextEditor): void {
+		// Clear any existing preview first
+		this.clearAutocompletePreview()
+
+		// Set the loading state
+		this.isLoadingCompletion = true
+
+		// Show the loading decoration
+		const position = editor.selection.active
+		const decoration: vscode.DecorationOptions = {
+			range: new vscode.Range(position, position),
+		}
+
+		editor.setDecorations(this.loadingDecorationType, [decoration])
+	}
+
+	/**
 	 * Triggers a completion request when cursor moves or document changes
 	 */
 	private triggerCompletion(document: vscode.TextDocument, position: vscode.Position): void {
@@ -201,6 +232,9 @@ export class AutocompleteProvider {
 			// Set a new debounce timeout
 			this.throttleTimeout = setTimeout(async () => {
 				try {
+					// Show loading indicator before starting the request
+					this.showLoadingIndicator(editor)
+
 					// Get completion text
 					const completionText = await this.getCompletionText(
 						document,
@@ -214,9 +248,14 @@ export class AutocompleteProvider {
 						const textBeforeCursor = lineText.substring(0, position.character)
 						const finalCompletionText = this.removeMatchingPrefix(textBeforeCursor, completionText)
 						this.updateAutocompletePreview(editor, finalCompletionText)
+					} else {
+						// Clear the loading indicator if no completion was generated
+						this.clearAutocompletePreview()
 					}
 				} catch (error) {
 					console.error("Error triggering completion:", error)
+					// Clear the loading indicator on error
+					this.clearAutocompletePreview()
 				}
 				this.throttleTimeout = null
 			}, this.debounceDelay)
@@ -252,6 +291,14 @@ export class AutocompleteProvider {
 			return finalCompletionText
 		} catch (error) {
 			console.error("Error getting completion text:", error)
+
+			// Make sure to clear the loading indicator on error
+			const editor = vscode.window.activeTextEditor
+			if (editor && this.isLoadingCompletion) {
+				editor.setDecorations(this.loadingDecorationType, [])
+				this.isLoadingCompletion = false
+			}
+
 			return null
 		}
 	}
@@ -310,11 +357,23 @@ export class AutocompleteProvider {
 		const result = await this.processCompletionStream(systemPrompt, prompt, completionId, document)
 
 		if (result.isCancelled || token.isCancellationRequested) {
+			// Make sure to clear the loading indicator if the completion is cancelled
+			const editor = vscode.window.activeTextEditor
+			if (editor && this.isLoadingCompletion) {
+				editor.setDecorations(this.loadingDecorationType, [])
+				this.isLoadingCompletion = false
+			}
 			return null
 		}
 
 		// Validate completion against selection context
 		if (!this.validateCompletionContext(context, document)) {
+			// Make sure to clear the loading indicator if validation fails
+			const editor = vscode.window.activeTextEditor
+			if (editor && this.isLoadingCompletion) {
+				editor.setDecorations(this.loadingDecorationType, [])
+				this.isLoadingCompletion = false
+			}
 			return null
 		}
 
@@ -332,6 +391,10 @@ export class AutocompleteProvider {
 			return
 		}
 
+		// Make sure to clear the loading indicator
+		this.isLoadingCompletion = false
+		editor.setDecorations(this.loadingDecorationType, [])
+
 		// Update with decorator (we're now only using decorators, not inline completion)
 		const position = editor.selection.active
 		const decoration: vscode.DecorationOptions = {
@@ -348,16 +411,18 @@ export class AutocompleteProvider {
 	}
 
 	/**
-	 * Clears any displayed preview text
+	 * Clears any displayed preview text and loading indicator
 	 */
 	public clearAutocompletePreview() {
 		this.isShowingAutocompletePreview = false
+		this.isLoadingCompletion = false
 		this.currentAutocompletePreview = ""
 
 		// Clear decorators
 		const editor = vscode.window.activeTextEditor
 		if (editor) {
 			editor.setDecorations(this.decorationType, [])
+			editor.setDecorations(this.loadingDecorationType, [])
 		}
 
 		// Update the context for keybindings
@@ -498,7 +563,8 @@ export class AutocompleteProvider {
 			this.clearAutocompletePreview()
 		}
 
-		// Dispose of the decorator type
+		// Dispose of the decorator types
 		this.decorationType.dispose()
+		this.loadingDecorationType.dispose()
 	}
 }
