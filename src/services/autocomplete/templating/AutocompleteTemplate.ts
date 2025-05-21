@@ -25,19 +25,12 @@ export interface AutocompleteTemplate {
 	completionOptions?: Partial<CompletionOptions>
 }
 
+const endOfText = "<|end" + "of" + "text|>" // workaround for https://github.com/Kilo-Org/kilocode/issues/452
 // https://huggingface.co/stabilityai/stable-code-3b
 const stableCodeFimTemplate: AutocompleteTemplate = {
 	template: "<fim_prefix>{{{prefix}}}<fim_suffix>{{{suffix}}}<fim_middle>",
 	completionOptions: {
-		stop: [
-			"<fim_prefix>",
-			"<fim_suffix>",
-			"<fim_middle>",
-			"<file_sep>",
-			"<|endoftext|>",
-			"</fim_middle>",
-			"</code>",
-		],
+		stop: ["<fim_prefix>", "<fim_suffix>", "<fim_middle>", "<file_sep>", endOfText, "</fim_middle>", "</code>"],
 	},
 }
 
@@ -48,7 +41,7 @@ const qwenCoderFimTemplate: AutocompleteTemplate = {
 	template: "<|fim_prefix|>{{{prefix}}}<|fim_suffix|>{{{suffix}}}<|fim_middle|>",
 	completionOptions: {
 		stop: [
-			"<|endoftext|>",
+			endOfText,
 			"<|fim_prefix|>",
 			"<|fim_middle|>",
 			"<|fim_suffix|>",
