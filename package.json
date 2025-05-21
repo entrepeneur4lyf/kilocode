@@ -200,6 +200,24 @@
 				"category": "%configuration.title%"
 			},
 			{
+				"command": "kilo-code.watchMode.enable",
+				"title": "Enable Watch Mode",
+				"category": "Kilo Code",
+				"icon": "$(eye)"
+			},
+			{
+				"command": "kilo-code.watchMode.disable",
+				"title": "Disable Watch Mode",
+				"category": "Kilo Code",
+				"icon": "$(eye-closed)"
+			},
+			{
+				"command": "kilo-code.watchMode.toggle",
+				"title": "Toggle Watch Mode",
+				"category": "Kilo Code",
+				"icon": "$(eye)"
+			},
+			{
 				"command": "kilo-code.newTask",
 				"title": "%command.newTask.title%",
 				"category": "%configuration.title%"

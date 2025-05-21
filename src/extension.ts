@@ -19,6 +19,7 @@ import { ClineProvider } from "./core/webview/ClineProvider"
 import { DIFF_VIEW_URI_SCHEME } from "./integrations/editor/DiffViewProvider"
 import { TerminalRegistry } from "./integrations/terminal/TerminalRegistry"
 import { McpServerManager } from "./services/mcp/McpServerManager"
+import { WatchModeService } from "./services/watchMode"
 import { API } from "./exports/api"
 import { migrateSettings } from "./utils/migrateSettings"
 
@@ -41,6 +42,7 @@ import { initializeI18n } from "./i18n"
 
 let outputChannel: vscode.OutputChannel
 let extensionContext: vscode.ExtensionContext
+let watchModeService: WatchModeService
 
 // This method is called when your extension is activated.
 // Your extension is activated the very first time the command is executed.
@@ -94,7 +96,12 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	}
 
-	registerCommands({ context, outputChannel, provider })
+	// Initialize and start watch mode service
+	watchModeService = new WatchModeService(context, outputChannel)
+	watchModeService.start()
+	context.subscriptions.push(watchModeService)
+	
+	registerCommands({ context, outputChannel, provider, watchModeService })
 
 	/**
 	 * We use the text document content provider API to show the left side for diff
@@ -166,4 +173,9 @@ export async function deactivate() {
 
 	// Clean up terminal handlers
 	TerminalRegistry.cleanup()
+	
+	// Stop watch mode service if active
+	if (watchModeService) {
+		watchModeService.stop()
+	}
 }
