@@ -56,7 +56,7 @@ This phase involved understanding the key files from `continue/` relevant to VS 
         - [`continue/extensions/vscode/src/autocomplete/RecentlyVisitedRangesService.ts`](continue/extensions/vscode/src/autocomplete/RecentlyVisitedRangesService.ts:1): `RecentlyVisitedRangesService` class for context.
     - **Status Bar:** [`continue/extensions/vscode/src/autocomplete/statusBar.ts`](continue/extensions/vscode/src/autocomplete/statusBar.ts:1). Our [`AutocompleteProvider.ts`](src/services/autocomplete/AutocompleteProvider.ts:1) already manages a status bar. We will only integrate if `continue/` offers significant, non-duplicative improvements (e.g., more dynamic status updates based on battery or model errors).
     - **Extension Activation:** [`continue/extensions/vscode/src/extension/VsCodeExtension.ts`](continue/extensions/vscode/src/extension/VsCodeExtension.ts:1) (via `activate.ts`) shows how `ContinueCompletionProvider` is registered.
-    - **IDE Abstraction:** [`continue/extensions/vscode/src/VsCodeIde.ts`](continue/extensions/vscode/src/VsCodeIde.ts:1) provides VS Code specific implementations for IDE interactions. We need to ensure our existing IDE interactions are sufficient or can be enhanced by specific methods from this class if used by the core autocomplete logic we integrate.
+    - **IDE Abstraction:** The plan involves potentially extending our existing `IDE` interface, defined in [`src/services/autocomplete/utils/ide.ts`](src/services/autocomplete/utils/ide.ts:5), with necessary functionalities from `continue`'s `IDE` interface (see `continue/core/index.d.ts`) and its specific VS Code implementation found in [`continue/extensions/vscode/src/VsCodeIde.ts`](continue/extensions/vscode/src/VsCodeIde.ts:1). This is to ensure our IDE abstraction layer can support any new requirements from the integrated `continue/` core autocomplete logic. The `continue` implementation serves as a reference, especially if it simplifies integration or testing.
 
 5.  **Compiled Lists (High-Level):**
     - **Files/Modules for Integration into [`src/services/autocomplete/`](src/services/autocomplete/):**
@@ -77,7 +77,7 @@ This phase involved understanding the key files from `continue/` relevant to VS 
         - Our [`tsconfig.json`](tsconfig.json:1) uses `"module": "commonjs"` and `"moduleResolution": "node"`.
         - [`continue/core/tsconfig.json`](continue/core/tsconfig.json:1) uses `"module": "ESNext"` and `"moduleResolution": "Bundler"`.
         - [`continue/extensions/vscode/tsconfig.json`](continue/extensions/vscode/tsconfig.json:1) uses `"module": "commonjs"`.
-        - We will likely need to ensure our TypeScript setup can correctly resolve and transpile the ESNext modules from `continue/core/` if we integrate them directly. This might involve adjusting our `module` or `moduleResolution` settings or ensuring our build process handles this. Path aliases, if used by `continue/` and adopted, would also need configuration.
+        - We will likely need to ensure our TypeScript setup can correctly resolve and transpile the ESNext modules from `continue/core/` if we integrate them directly. This might involve adjusting our `module` or `moduleResolution` settings or ensuring our build process handles this. Path aliases, if used by `continue/` and adopted, would also need configuration. **Crucially, changes to our [`tsconfig.json`](tsconfig.json:1) should be avoided if possible to minimize build system complexities.**
     - **`package.json` Update:**
         - Carefully add only the _necessary_ external npm dependencies identified in Phase 1.5 to our existing [`package.json`](package.json:1).
         - Run `npm install` (or equivalent).
@@ -111,13 +111,21 @@ This phase involved understanding the key files from `continue/` relevant to VS 
     - **Update Component Registration:** Our main activation file, [`src/extension.ts`](src/extension.ts:1), already registers [`AutocompleteProvider.ts`](src/services/autocomplete/AutocompleteProvider.ts:1). Ensure any new initialization steps for the enhanced provider are handled.
     - **Remove Redundancies:** Remove duplicated functionalities (e.g., basic status bar, debounce if ours is kept).
     - **Resolve Conflicts & Errors:** Iteratively address TypeScript errors, runtime issues, and logical conflicts.
+    - **AIDIFF Comments:** When adding comments solely to explain _why_ a change was made (i.e., meta-comments about the change itself, not comments explaining the code's functionality), prefix these comments with "AIDIFF".
+    - **PLANREF Comments:** During implementation, consult files referenced by `//PLANREF:` comments in the source code for inspiration and examples.
 
 **Phase 4: Testing and Refinement**
 
 1.  **Launch & Debug:** Run our extension in a VS Code Extension Development Host.
-2.  **Test Autocomplete:** Thoroughly test in various scenarios (different file types, code contexts, edge cases). Focus on suggestion quality, relevance, and timeliness.
-3.  **Verify LLM Integration:** Ensure our custom LLM providers are correctly used.
-4.  **Performance Testing:** Check for regressions, especially suggestion latency.
-5.  **Iterate:** Debug, refine, and document changes within the code.
+2.  **Test Strategy for Integrated Code:**
+    - Copy relevant tests from `continue/` that directly apply to the integrated code modules.
+    - If a `continue/` test covers our integrated code only partially and predominantly tests other, non-copied `continue/` code, prefer to:
+        - Reduce the scope of the test to focus only on the parts relevant to our integrated code.
+        - Omit the test entirely if adaptation is too complex or results in testing mostly mock implementations.
+    - Ensure new tests are added for any significant adaptations or new logic introduced during integration.
+3.  **Test Autocomplete:** Thoroughly test in various scenarios (different file types, code contexts, edge cases). Focus on suggestion quality, relevance, and timeliness.
+4.  **Verify LLM Integration:** Ensure our custom LLM providers are correctly used.
+5.  **Performance Testing:** Check for regressions, especially suggestion latency.
+6.  **Iterate:** Debug, refine, and document changes within the code.
 
 This revised plan focuses on targeted enhancements to our VS Code extension's autocomplete capabilities, leveraging specific, high-value components from `continue/` while respecting our existing architecture.
