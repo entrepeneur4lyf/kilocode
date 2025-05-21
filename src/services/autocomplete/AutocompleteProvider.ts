@@ -43,8 +43,9 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 	// Inline completion provider registration
 	private inlineCompletionProviderDisposable: vscode.Disposable | null = null
 
-	// Decoration for loading indicator
+	// Decorations for loading indicators
 	private loadingDecorationType: vscode.TextEditorDecorationType
+	private streamingDecorationType: vscode.TextEditorDecorationType
 
 	constructor() {
 		this.cache = new CompletionCache()
@@ -63,6 +64,16 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 				color: new vscode.ThemeColor("editorGhostText.foreground"),
 				fontStyle: "italic",
 				contentText: "⏳",
+			},
+			rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen,
+		})
+
+		// Create a new decorator specifically for streaming completions
+		this.streamingDecorationType = vscode.window.createTextEditorDecorationType({
+			after: {
+				color: new vscode.ThemeColor("editorGhostText.foreground"),
+				fontStyle: "italic",
+				contentText: "⌛",
 			},
 			rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen,
 		})
@@ -230,6 +241,9 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 						this.clearAutocompletePreview()
 					}
 
+					// Always hide the streaming decorator when cursor moves
+					e.textEditor.setDecorations(this.streamingDecorationType, [])
+
 					// If we've accepted the first line and cursor moves, reset state
 					// This prevents showing remaining lines if user moves cursor after accepting first line
 					if (this.hasAcceptedFirstLine && e.kind !== vscode.TextEditorSelectionChangeKind.Command) {
@@ -241,9 +255,15 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 
 		// Register document change event
 		context.subscriptions.push(
-			vscode.workspace.onDidChangeTextDocument((_e) => {
+			vscode.workspace.onDidChangeTextDocument((e) => {
 				if (this.isLoadingCompletion) {
 					this.clearAutocompletePreview()
+				}
+
+				// Hide streaming decorator when document changes
+				const editor = vscode.window.activeTextEditor
+				if (editor && editor.document === e.document) {
+					editor.setDecorations(this.streamingDecorationType, [])
 				}
 			}),
 		)
@@ -300,6 +320,9 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 	/**
 	 * Shows the loading indicator at the current cursor position
 	 */
+	/**
+	 * Shows the loading indicator at the current cursor position
+	 */
 	private showLoadingIndicator(editor: vscode.TextEditor): void {
 		// Clear any existing preview first
 		this.clearAutocompletePreview()
@@ -314,6 +337,19 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		}
 
 		editor.setDecorations(this.loadingDecorationType, [decoration])
+	}
+
+	/**
+	 * Shows the streaming indicator at the current cursor position
+	 */
+	private showStreamingIndicator(editor: vscode.TextEditor): void {
+		// Show the streaming decoration
+		const position = editor.selection.active
+		const decoration: vscode.DecorationOptions = {
+			range: new vscode.Range(position, position),
+		}
+
+		editor.setDecorations(this.streamingDecorationType, [decoration])
 	}
 
 	/**
@@ -389,6 +425,11 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		context: vscode.InlineCompletionContext,
 		token: vscode.CancellationToken,
 	): Promise<string | null> {
+		// Show streaming indicator while generating completion
+		const editor = vscode.window.activeTextEditor
+		if (editor && editor.document === document) {
+			this.showStreamingIndicator(editor)
+		}
 		// Generate a unique ID for this completion
 		const completionId = crypto.randomUUID()
 		this.activeCompletionId = completionId
@@ -466,10 +507,11 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		this.remainingLinesPreview = ""
 		this.hasAcceptedFirstLine = false
 
-		// Clear loading indicator
+		// Clear loading indicators
 		const editor = vscode.window.activeTextEditor
 		if (editor) {
 			editor.setDecorations(this.loadingDecorationType, [])
+			editor.setDecorations(this.streamingDecorationType, [])
 		}
 
 		// Update the context for keybindings
@@ -532,6 +574,7 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		if (editor) {
 			this.isLoadingCompletion = false
 			editor.setDecorations(this.loadingDecorationType, [])
+			// Keep the streaming indicator visible while content is streaming
 		}
 
 		// Stream updates to store completion
@@ -596,6 +639,11 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 					}, this.debounceDelay)
 				}
 			}
+		}
+
+		// Clear streaming indicator when streaming is complete
+		if (editor) {
+			editor.setDecorations(this.streamingDecorationType, [])
 		}
 
 		// Final update to ensure we have the correct split
@@ -687,7 +735,8 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 			this.inlineCompletionProviderDisposable = null
 		}
 
-		// Dispose of the decorator type
+		// Dispose of the decorator types
 		this.loadingDecorationType.dispose()
+		this.streamingDecorationType.dispose()
 	}
 }
