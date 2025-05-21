@@ -6,6 +6,8 @@ import { ApiHandler, buildApiHandler } from "../../api"
 import { ContextGatherer } from "./ContextGatherer"
 import { PromptRenderer } from "./PromptRenderer"
 import { CompletionCache } from "./utils/CompletionCache"
+import { AutocompleteDebouncer } from "./utils/AutocompleteDebouncer" // AIDIFF: Import new debouncer
+import { v4 as uuidv4 } from "uuid" // AIDIFF: Import uuid for completion IDs, aligning with continue/
 
 // Default configuration values
 const DEFAULT_DEBOUNCE_DELAY = 150
@@ -18,11 +20,13 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 	private apiHandler: ApiHandler
 	private enabled: boolean = true
 	private activeCompletionId: string | null = null
+	private activeCompletionAbortController: AbortController | null = null // AIDIFF: To manage cancellation of ongoing requests
 
-	// Throttling and debouncing
-	private throttleTimeout: NodeJS.Timeout | null = null
-	private debounceDelay: number = DEFAULT_DEBOUNCE_DELAY
-	private pendingEditor: vscode.TextEditor | null = null
+	// Debouncing
+	// PLANREF: continue/core/autocomplete/util/AutocompleteDebouncer.ts
+	private readonly debouncer: AutocompleteDebouncer // AIDIFF: New debouncer instance
+	private debounceDelay: number = DEFAULT_DEBOUNCE_DELAY // AIDIFF: Kept for configuration, used by new debouncer
+	// AIDIFF: Removed throttleTimeout and pendingEditor as they are replaced by the new debouncer logic
 
 	// Core services
 	private readonly cache: CompletionCache
@@ -48,13 +52,16 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 	private streamingDecorationType: vscode.TextEditorDecorationType
 
 	constructor() {
+		this.debouncer = new AutocompleteDebouncer() // AIDIFF: Initialize new debouncer
 		this.cache = new CompletionCache()
 		this.config = new AutocompleteConfig()
 		this.contextGatherer = new ContextGatherer()
+		// AIDIFF: Instantiate PromptRenderer with empty options and default model.
+		// PromptRenderer's constructor handles partial options.
 		this.promptRenderer = new PromptRenderer({}, DEFAULT_OLLAMA_MODEL)
 
 		this.apiHandler = buildApiHandler({
-			apiProvider: "ollama",
+			apiProvider: "ollama", // TODO: This should ideally come from config too
 			ollamaModelId: DEFAULT_OLLAMA_MODEL,
 			ollamaBaseUrl: DEFAULT_OLLAMA_URL,
 		})
@@ -68,7 +75,6 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 			rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen,
 		})
 
-		// Create a new decorator specifically for streaming completions
 		this.streamingDecorationType = vscode.window.createTextEditorDecorationType({
 			after: {
 				color: new vscode.ThemeColor("editorGhostText.foreground"),
@@ -79,39 +85,25 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		})
 	}
 
-	/**
-	 * Register the autocomplete provider with VSCode
-	 */
 	register(context: vscode.ExtensionContext): vscode.Disposable {
-		// Register the inline completion provider
 		this.inlineCompletionProviderDisposable = vscode.languages.registerInlineCompletionItemProvider(
-			{ pattern: "**" }, // All files
+			{ pattern: "**" },
 			this,
 		)
 		context.subscriptions.push(this.inlineCompletionProviderDisposable)
-
-		// Register event handlers for preview text
 		this.registerTextEditorEvents(context)
-
-		// Register commands for accepting/dismissing preview
 		this.registerPreviewCommands(context)
 
-		// Register keybinding for Tab to accept completions
-		// This ensures our command runs when Tab is pressed with an inline suggestion visible
 		context.subscriptions.push(
 			vscode.commands.registerCommand("editor.action.inlineSuggest.commit", async () => {
-				// If we have an active completion, handle it with our custom logic
 				if (this.isShowingAutocompletePreview) {
 					await vscode.commands.executeCommand("kilo-code.acceptAutocompletePreview")
 					return
 				}
-
-				// Otherwise, let VS Code handle it normally
 				await vscode.commands.executeCommand("default:editor.action.inlineSuggest.commit")
 			}),
 		)
 
-		// Register UI components and event handlers
 		const statusBarItem = this.registerStatusBarItem(context)
 		this.registerConfigurationWatcher(context)
 		this.registerToggleCommand(context, statusBarItem)
@@ -121,77 +113,115 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		}
 	}
 
-	/**
-	 * Implementation of InlineCompletionItemProvider.provideInlineCompletionItems
-	 */
 	async provideInlineCompletionItems(
 		document: vscode.TextDocument,
 		position: vscode.Position,
 		context: vscode.InlineCompletionContext,
 		token: vscode.CancellationToken,
 	): Promise<vscode.InlineCompletionItem[] | vscode.InlineCompletionList | null> {
-		// Don't provide completions if disabled
+		// AIDIFF: Overall structure adapted from continue/core/autocomplete/CompletionProvider.ts and continue/extensions/vscode/src/autocomplete/completionProvider.ts
 		if (!this.enabled || this.isFileDisabled(document)) {
+			this.debouncer.clear()
 			return null
 		}
 
+		if (token.isCancellationRequested) {
+			this.debouncer.clear()
+			return null
+		}
+
+		// PLANREF: continue/core/autocomplete/CompletionProvider.ts L147-150
+		if (await this.debouncer.delayAndShouldDebounce(this.debounceDelay)) {
+			return null
+		}
+
+		if (this.activeCompletionAbortController) {
+			this.activeCompletionAbortController.abort()
+			this.activeCompletionAbortController = null
+		}
+		const abortController = new AbortController()
+		this.activeCompletionAbortController = abortController
+		const combinedSignal = abortController.signal
+		token.onCancellationRequested(() => {
+			abortController.abort()
+			if (this.activeCompletionId) this.activeCompletionId = null
+		})
+
+		// PLANREF: continue/extensions/vscode/src/autocomplete/completionProvider.ts L105-113
+		if (
+			document.uri.scheme === "vscode-scm" ||
+			(vscode.window.activeTextEditor && vscode.window.activeTextEditor.selections.length > 1)
+		) {
+			return null
+		}
+
+		// PLANREF: continue/extensions/vscode/src/autocomplete/completionProvider.ts L115-133 (selectedCompletionInfo check)
+		const { selectedCompletionInfo } = context
+		if (selectedCompletionInfo) {
+			// AIDIFF: Use _text to satisfy eslint unused-var rule, range is used.
+			const { text: _text, range } = selectedCompletionInfo
+			const typedLength = range.end.character - range.start.character
+			if (typedLength < MIN_TYPED_LENGTH_FOR_COMPLETION) {
+				return null
+			}
+		}
+
 		try {
-			// If we've already accepted the first line, show the remaining lines
 			if (this.hasAcceptedFirstLine && this.remainingLinesPreview) {
 				const item = new vscode.InlineCompletionItem(this.remainingLinesPreview)
-				// Set command to ensure VS Code knows this is a completion that can be accepted with Tab
 				item.command = { command: "editor.action.inlineSuggest.commit", title: "Accept Completion" }
-
-				// Mark that we're showing a preview
 				this.isShowingAutocompletePreview = true
-
-				// Set context for keybindings
 				vscode.commands.executeCommand("setContext", this.autocompletePreviewVisibleContextKey, true)
-
 				return [item]
 			}
 
-			// Otherwise, generate a new completion
-			const completionText = await this.generateCompletionText(document, position, context, token)
-			if (!completionText) return null
+			// AIDIFF: Pass position to validateCompletionContext
+			if (!this.validateCompletionContext(context, document, position)) {
+				this.clearLoadingIndicatorIfNeeded()
+				return null
+			}
 
-			// Split the completion into first line and remaining lines
+			const completionText = await this.generateCompletionText(document, position, context, combinedSignal, token)
+			if (combinedSignal.aborted || token.isCancellationRequested || !completionText) {
+				this.clearLoadingIndicatorIfNeeded()
+				return null
+			}
+
 			const lines = completionText.split("\n")
-
-			// Create the completion item
 			let item: vscode.InlineCompletionItem
 
-			if (lines.length > 1) {
+			// AIDIFF: Use typed config for multilineCompletions
+			const currentConfig = await this.config.loadConfig()
+			if (lines.length > 1 && currentConfig.multilineCompletions === "two-stage") {
 				this.firstLinePreview = lines[0]
 				this.remainingLinesPreview = lines.slice(1).join("\n")
-				// Only show the first line initially
 				item = new vscode.InlineCompletionItem(this.firstLinePreview)
 			} else {
-				// Single line completion
 				this.firstLinePreview = completionText
 				this.remainingLinesPreview = ""
 				item = new vscode.InlineCompletionItem(completionText)
 			}
 
-			// Set command to ensure VS Code knows this is a completion that can be accepted with Tab
 			item.command = { command: "editor.action.inlineSuggest.commit", title: "Accept Completion" }
-
-			// Mark that we're showing a preview
 			this.isShowingAutocompletePreview = true
-
-			// Set context for keybindings
 			vscode.commands.executeCommand("setContext", this.autocompletePreviewVisibleContextKey, true)
 
 			return [item]
-		} catch (error) {
-			console.error("Error providing inline completion:", error)
+		} catch (error: any) {
+			if (error.name === "AbortError") {
+				console.log("Autocomplete request aborted.")
+			} else {
+				console.error("Error providing inline completion:", error)
+			}
+			this.clearLoadingIndicatorIfNeeded()
 			return null
+		} finally {
+			if (this.activeCompletionAbortController === abortController) {
+				this.activeCompletionAbortController = null
+			}
 		}
 	}
 
-	/**
-	 * Register status bar item to show autocomplete status
-	 */
 	private registerStatusBarItem(context: vscode.ExtensionContext): vscode.StatusBarItem {
 		const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100)
 		statusBarItem.text = "$(sparkle) Autocomplete"
@@ -202,23 +232,27 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		return statusBarItem
 	}
 
-	/**
-	 * Register configuration change watcher
-	 */
 	private registerConfigurationWatcher(context: vscode.ExtensionContext): void {
 		context.subscriptions.push(
-			vscode.workspace.onDidChangeConfiguration((e) => {
+			vscode.workspace.onDidChangeConfiguration(async (e) => {
+				// AIDIFF: Make async for config loading
 				if (e.affectsConfiguration("kilo-code.autocomplete")) {
-					const config = vscode.workspace.getConfiguration("kilo-code")
-					this.debounceDelay = config.get("autocomplete.debounceDelay") || DEFAULT_DEBOUNCE_DELAY
+					const configValues = await this.config.loadConfig() // AIDIFF: Load full config
+					this.debounceDelay = configValues?.debounceDelay || DEFAULT_DEBOUNCE_DELAY
+					// AIDIFF: Update ApiHandler if relevant settings change (e.g. model, URL)
+					// This is a simplified version; a more robust update mechanism might be needed.
+					// TODO: The "apiProvider" is still hardcoded to "ollama". This should be configurable.
+					this.apiHandler = buildApiHandler({
+						apiProvider: "ollama",
+						ollamaModelId: configValues?.ollamaModelId || DEFAULT_OLLAMA_MODEL,
+						ollamaBaseUrl: configValues?.ollamaBaseUrl || DEFAULT_OLLAMA_URL,
+						// Pass other relevant options from configValues if ApiHandler/buildApiHandler supports them
+					})
 				}
 			}),
 		)
 	}
 
-	/**
-	 * Register command to toggle autocomplete
-	 */
 	private registerToggleCommand(context: vscode.ExtensionContext, statusBarItem: vscode.StatusBarItem): void {
 		context.subscriptions.push(
 			vscode.commands.registerCommand("kilo-code.toggleAutocomplete", () => {
@@ -229,23 +263,17 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		)
 	}
 
-	/**
-	 * Register editor event handlers for tracking cursor position and document changes
-	 */
 	private registerTextEditorEvents(context: vscode.ExtensionContext): void {
 		context.subscriptions.push(
 			vscode.window.onDidChangeTextEditorSelection((e) => {
 				if (e.textEditor) {
-					// Clear loading indicator when cursor moves
+					this.debouncer.clear()
 					if (this.isLoadingCompletion) {
 						this.clearAutocompletePreview()
+					} else {
+						e.textEditor.setDecorations(this.loadingDecorationType, [])
+						e.textEditor.setDecorations(this.streamingDecorationType, [])
 					}
-
-					// Always hide the streaming decorator when cursor moves
-					e.textEditor.setDecorations(this.streamingDecorationType, [])
-
-					// If we've accepted the first line and cursor moves, reset state
-					// This prevents showing remaining lines if user moves cursor after accepting first line
 					if (this.hasAcceptedFirstLine && e.kind !== vscode.TextEditorSelectionChangeKind.Command) {
 						this.clearAutocompletePreview()
 					}
@@ -253,63 +281,51 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 			}),
 		)
 
-		// Register document change event
 		context.subscriptions.push(
 			vscode.workspace.onDidChangeTextDocument((e) => {
 				if (this.isLoadingCompletion) {
 					this.clearAutocompletePreview()
-				}
-
-				// Hide streaming decorator when document changes
-				const editor = vscode.window.activeTextEditor
-				if (editor && editor.document === e.document) {
-					editor.setDecorations(this.streamingDecorationType, [])
+				} else {
+					const editor = vscode.window.activeTextEditor
+					if (editor && editor.document === e.document) {
+						editor.setDecorations(this.loadingDecorationType, [])
+						editor.setDecorations(this.streamingDecorationType, [])
+					}
 				}
 			}),
 		)
 	}
 
-	/**
-	 * Register commands for accepting and dismissing preview text
-	 */
 	private registerPreviewCommands(context: vscode.ExtensionContext): void {
-		// Accept command
 		const acceptCommand = vscode.commands.registerCommand("kilo-code.acceptAutocompletePreview", async () => {
 			const editor = vscode.window.activeTextEditor
 			if (!editor) return
 
-			// Handle the acceptance directly without calling commit again
 			if (!this.hasAcceptedFirstLine && this.remainingLinesPreview) {
-				// First Tab press: Insert the first line
 				if (this.firstLinePreview) {
 					await editor.edit((editBuilder) => {
 						editBuilder.insert(editor.selection.active, this.firstLinePreview)
 					})
-
-					// Mark that we've accepted the first line
 					this.hasAcceptedFirstLine = true
-
-					// Wait a moment for the first line to be inserted
 					setTimeout(async () => {
-						// Trigger a new completion to show the remaining lines
 						await vscode.commands.executeCommand("editor.action.inlineSuggest.trigger")
 					}, 50)
 				}
 			} else if (this.hasAcceptedFirstLine && this.remainingLinesPreview) {
-				// Second Tab press: Insert the remaining lines
 				await editor.edit((editBuilder) => {
 					editBuilder.insert(editor.selection.active, this.remainingLinesPreview)
 				})
-
-				// Reset state
 				this.clearAutocompletePreview()
 			} else {
-				// Single line completion: Reset state
+				// For single line completion or when remainingLinesPreview is empty after first line acceptance
+				// We need to ensure the full preview (which might be just the firstLinePreview if it was a single line)
+				// is inserted if it hasn't been fully by VS Code's default commit.
+				// However, the default commit (`editor.action.inlineSuggest.commit`) should handle this.
+				// So, just clearing our state should be enough.
 				this.clearAutocompletePreview()
 			}
 		})
 
-		// Dismiss command
 		const dismissCommand = vscode.commands.registerCommand("kilo-code.dismissAutocompletePreview", () => {
 			this.clearAutocompletePreview()
 		})
@@ -317,98 +333,29 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		context.subscriptions.push(acceptCommand, dismissCommand)
 	}
 
-	/**
-	 * Shows the loading indicator at the current cursor position
-	 */
-	/**
-	 * Shows the loading indicator at the current cursor position
-	 */
 	private showLoadingIndicator(editor: vscode.TextEditor): void {
-		// Clear any existing preview first
-		this.clearAutocompletePreview()
-
-		// Set the loading state
+		this.clearAutocompletePreview() // Clear previous state before showing new loading
 		this.isLoadingCompletion = true
-
-		// Show the loading decoration
 		const position = editor.selection.active
 		const decoration: vscode.DecorationOptions = {
 			range: new vscode.Range(position, position),
 		}
-
 		editor.setDecorations(this.loadingDecorationType, [decoration])
 	}
 
-	/**
-	 * Shows the streaming indicator at the current cursor position
-	 */
 	private showStreamingIndicator(editor: vscode.TextEditor): void {
-		// Show the streaming decoration
+		// Assuming loading indicator is already shown, or clear it if not, then show streaming
+		editor.setDecorations(this.loadingDecorationType, []) // Clear loading
 		const position = editor.selection.active
 		const decoration: vscode.DecorationOptions = {
 			range: new vscode.Range(position, position),
 		}
-
 		editor.setDecorations(this.streamingDecorationType, [decoration])
 	}
 
-	/**
-	 * Gets the completion text for the given document and position
-	 */
-	private async getCompletionText(
-		document: vscode.TextDocument,
-		position: vscode.Position,
-		context: vscode.InlineCompletionContext,
-		token: vscode.CancellationToken,
-	): Promise<string | null> {
-		try {
-			const cursorIndex = document.offsetAt(position)
+	// AIDIFF: Removed deprecated getCompletionText method
+	// private async getCompletionText(...)
 
-			// Get the current line text up to the cursor position
-			const lineText = document.lineAt(position.line).text
-			const textBeforeCursor = lineText.substring(0, position.character).trimStart()
-
-			// Generate a new completion
-			const result = await this.generateCompletionText(document, position, context, token)
-			if (!result) return null
-
-			// Remove any matching prefix from the result
-			const finalCompletionText = this.removeMatchingPrefix(textBeforeCursor, result)
-
-			// Split the completion into first line and remaining lines
-			const lines = finalCompletionText.split("\n")
-			if (lines.length > 1) {
-				this.firstLinePreview = lines[0]
-				this.remainingLinesPreview = lines.slice(1).join("\n")
-			} else {
-				this.firstLinePreview = finalCompletionText
-				this.remainingLinesPreview = ""
-			}
-
-			// Reset the acceptance state
-			this.hasAcceptedFirstLine = false
-
-			// Cache the result
-			this.cache.set(document.uri.toString(), document.getText(), cursorIndex, finalCompletionText)
-
-			return this.firstLinePreview
-		} catch (error) {
-			console.error("Error getting completion text:", error)
-
-			// Make sure to clear the loading indicator on error
-			const editor = vscode.window.activeTextEditor
-			if (editor && this.isLoadingCompletion) {
-				editor.setDecorations(this.loadingDecorationType, [])
-				this.isLoadingCompletion = false
-			}
-
-			return null
-		}
-	}
-
-	/**
-	 * Efficiently removes matching prefix from completion result
-	 */
 	private removeMatchingPrefix(textBeforeCursor: string, result: string): string {
 		if (!textBeforeCursor || !result.startsWith(textBeforeCursor)) {
 			return result
@@ -416,327 +363,250 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		return result.slice(textBeforeCursor.length)
 	}
 
-	/**
-	 * Generates a new completion text
-	 */
 	private async generateCompletionText(
 		document: vscode.TextDocument,
 		position: vscode.Position,
 		context: vscode.InlineCompletionContext,
-		token: vscode.CancellationToken,
+		abortSignal: AbortSignal,
+		vscodeToken: vscode.CancellationToken,
 	): Promise<string | null> {
-		// Show streaming indicator while generating completion
 		const editor = vscode.window.activeTextEditor
 		if (editor && editor.document === document) {
-			this.showStreamingIndicator(editor)
+			this.showLoadingIndicator(editor) // Show loading indicator
 		}
-		// Generate a unique ID for this completion
-		const completionId = crypto.randomUUID()
-		this.activeCompletionId = completionId
 
-		// Reset the acceptance state for a new completion
+		const completionId = uuidv4()
+		this.activeCompletionId = completionId
 		this.hasAcceptedFirstLine = false
 
-		// Load configuration
-		const conf = await this.config.loadConfig()
-		const useImports = conf?.useImports || false
-		const useDefinitions = conf?.onlyMyCode || false
-		const multilineCompletions = conf?.multilineCompletions || "auto"
+		const loadedConfig = await this.config.loadConfig()
+		const useImports = loadedConfig.useImports ?? false // Default if undefined
+		const useDefinitions = loadedConfig.onlyMyCode ?? true // Default if undefined
+		const multilineCompletions = loadedConfig.multilineCompletions ?? "auto"
+		// AIDIFF: Use typed config for ollamaParameters and ollamaModelId
+		const ollamaParameters = loadedConfig.ollamaParameters ?? {}
+		const ollamaModelId = loadedConfig.ollamaModelId || DEFAULT_OLLAMA_MODEL // Use default if not configured
 
-		// Gather context
 		const codeContext = await this.contextGatherer.gatherContext(document, position, useImports, useDefinitions)
+		if (abortSignal.aborted || vscodeToken.isCancellationRequested) return null
 
-		// Render prompts
-		const prompt = this.promptRenderer.renderPrompt(codeContext, {
+		// AIDIFF: Get prompt, prefix, and suffix from PromptRenderer
+		const {
+			prompt,
+			prefix: fimPrefix,
+			suffix: fimSuffix,
+			completionOptions,
+		} = this.promptRenderer.renderPrompt(codeContext, {
 			language: document.languageId,
 			includeImports: useImports,
 			includeDefinitions: useDefinitions,
-			multilineCompletions: multilineCompletions as any,
+			multilineCompletions: multilineCompletions, // Already string | "auto"
 		})
 		const systemPrompt = this.promptRenderer.renderSystemPrompt()
 
-		// Setup cancellation
-		const abortController = new AbortController()
-		token.onCancellationRequested(() => {
-			abortController.abort()
-			if (this.activeCompletionId === completionId) {
-				this.activeCompletionId = null
-			}
-		})
+		if (abortSignal.aborted || vscodeToken.isCancellationRequested) return null
 
-		// Process the completion stream
-		const result = await this.processCompletionStream(systemPrompt, prompt, completionId, document)
+		let fullCompletion = ""
+		let streamCancelled = false
 
-		if (result.isCancelled || token.isCancellationRequested) {
-			// Make sure to clear the loading indicator if the completion is cancelled
-			const editor = vscode.window.activeTextEditor
-			if (editor && this.isLoadingCompletion) {
-				editor.setDecorations(this.loadingDecorationType, [])
-				this.isLoadingCompletion = false
+		try {
+			// AIDIFF: Call getCompletionStream without casting; method is now defined on ApiHandler.
+			// Use stop tokens from completionOptions returned by renderPrompt.
+			const stream = this.apiHandler.getCompletionStream(
+				{
+					prompt: prompt, // Use the rendered prompt
+					systemPrompt,
+					modelId: ollamaModelId,
+					temperature: (ollamaParameters as any).temperature ?? completionOptions?.temperature ?? 0.1, // Prioritize specific ollama param, then template, then default
+					stop: completionOptions?.stop, // Use stop tokens from PromptRenderer
+				},
+				abortSignal,
+			)
+
+			if (editor && editor.document === document) {
+				this.showStreamingIndicator(editor) // Switch to streaming indicator
 			}
+
+			for await (const chunk of stream) {
+				if (abortSignal.aborted || vscodeToken.isCancellationRequested) {
+					streamCancelled = true
+					break
+				}
+				fullCompletion += chunk
+			}
+		} catch (error: any) {
+			if (error.name === "AbortError") {
+				streamCancelled = true
+			} else {
+				console.error("Error during completion stream:", error)
+				this.clearLoadingIndicatorIfNeeded(editor)
+				return null
+			}
+		} finally {
+			if (editor && editor.document === document) {
+				editor.setDecorations(this.streamingDecorationType, []) // Clear streaming indicator
+			}
+		}
+
+		if (streamCancelled) {
+			this.clearLoadingIndicatorIfNeeded(editor)
 			return null
 		}
 
-		// Validate completion against selection context
-		if (!this.validateCompletionContext(context, document)) {
-			// Make sure to clear the loading indicator if validation fails
-			const editor = vscode.window.activeTextEditor
-			if (editor && this.isLoadingCompletion) {
-				editor.setDecorations(this.loadingDecorationType, [])
-				this.isLoadingCompletion = false
-			}
-			return null
-		}
+		// AIDIFF: Use fimPrefix and fimSuffix from renderPrompt for post-processing.
+		let processedCompletion = this._postprocessCompletion(fullCompletion, fimPrefix, fimSuffix, ollamaModelId)
 
-		return this.cleanMarkdownCodeBlocks(result.completion)
+		// AIDIFF: Validation already happened in provideInlineCompletionItems before calling generateCompletionText.
+		// If further validation is needed post-generation, it can be added here.
+		// For now, removing the redundant call.
+		// if (!this.validateCompletionContext(context, document, position)) {
+		// 	this.clearLoadingIndicatorIfNeeded(editor);
+		// 	return null;
+		// }
+
+		const cursorIndex = document.offsetAt(position)
+		// AIDIFF: Cache the processed completion
+		this.cache.set(document.uri.toString(), document.getText(), cursorIndex, processedCompletion)
+
+		this.clearLoadingIndicatorIfNeeded(editor)
+		return processedCompletion
 	}
 
-	/**
-	 * Updates the preview text at the current cursor position
-	 */
-	// We no longer need updateAutocompletePreview since we're using inline completions
+	// AIDIFF: Placeholder for post-processing logic from continue/core/autocomplete/postprocessing/index.ts
+	// This will be implemented in a subsequent step.
+	private _postprocessCompletion(completion: string, prefix: string, suffix: string, modelName: string): string {
+		// For now, just use existing markdown cleaning.
+		// TODO: Integrate full postprocessing logic here.
+		console.log(
+			"Placeholder: _postprocessCompletion called for model:",
+			modelName,
+			"prefix:",
+			prefix,
+			"suffix:",
+			suffix,
+		)
+		return this.cleanMarkdownCodeBlocks(completion)
+	}
 
-	/**
-	 * Clears any displayed preview text and loading indicator
-	 */
+	private clearLoadingIndicatorIfNeeded(currentEditor?: vscode.TextEditor): void {
+		const editor = currentEditor || vscode.window.activeTextEditor
+		if (editor) {
+			if (this.isLoadingCompletion) {
+				editor.setDecorations(this.loadingDecorationType, [])
+				this.isLoadingCompletion = false
+			}
+			editor.setDecorations(this.streamingDecorationType, [])
+		}
+	}
+
 	public clearAutocompletePreview() {
+		// AIDIFF: Clear debouncer
+		this.debouncer.clear()
+
+		// AIDIFF: Cancel any ongoing request
+		if (this.activeCompletionAbortController) {
+			this.activeCompletionAbortController.abort()
+			this.activeCompletionAbortController = null
+		}
+		this.activeCompletionId = null
+
 		this.isShowingAutocompletePreview = false
-		this.isLoadingCompletion = false
+		// AIDIFF: isLoadingCompletion is cleared by clearLoadingIndicatorIfNeeded
 		this.currentAutocompletePreview = ""
 		this.firstLinePreview = ""
 		this.remainingLinesPreview = ""
 		this.hasAcceptedFirstLine = false
 
-		// Clear loading indicators
-		const editor = vscode.window.activeTextEditor
-		if (editor) {
-			editor.setDecorations(this.loadingDecorationType, [])
-			editor.setDecorations(this.streamingDecorationType, [])
-		}
+		this.clearLoadingIndicatorIfNeeded() // Clears decorations
 
-		// Update the context for keybindings
 		vscode.commands.executeCommand("setContext", this.autocompletePreviewVisibleContextKey, false)
-
-		// Hide any active inline suggestions
-		vscode.commands.executeCommand("editor.action.inlineSuggest.hide")
+		vscode.commands.executeCommand("editor.action.inlineSuggest.hide") // Explicitly hide VS Code's suggestion UI
 	}
 
-	/**
-	 * Processes the completion stream and returns the result
-	 */
-	private async processCompletionStream(
-		systemPrompt: string,
-		prompt: string,
-		completionId: string,
-		document: vscode.TextDocument,
-	): Promise<{ completion: string; isCancelled: boolean }> {
-		let completion = ""
-		let isCancelled = false
-		const currentCompletionId = completionId
-		let firstLineComplete = false
-		let firstLine = ""
-		let remainingLines = ""
-
-		// Function to check if the request has been cancelled
-		const checkCancellation = () => {
-			if (this.activeCompletionId !== currentCompletionId) {
-				isCancelled = true
-				return true
-			}
-			return false
-		}
-
-		// Function to split completion into first line and remaining lines
-		const splitCompletion = (text: string): { firstLine: string; remainingLines: string } => {
-			const cleanedText = this.cleanMarkdownCodeBlocks(text)
-			const lines = cleanedText.split("\n")
-
-			if (lines.length <= 1) {
-				return { firstLine: cleanedText, remainingLines: "" }
-			} else {
-				return {
-					firstLine: lines[0],
-					remainingLines: lines.slice(1).join("\n"),
-				}
-			}
-		}
-
-		// Create the stream using the API handler's createMessage method
-		// Note: Stop tokens are embedded in the prompt template format instead of passed directly
-		const stream = this.apiHandler.createMessage(systemPrompt, [
-			{ role: "user", content: [{ type: "text", text: prompt }] },
-		])
-
-		// Get the editor for streaming updates
-		const editor = vscode.window.activeTextEditor
-
-		// Clear loading indicator when we start receiving content
-		if (editor) {
-			this.isLoadingCompletion = false
-			editor.setDecorations(this.loadingDecorationType, [])
-			// Keep the streaming indicator visible while content is streaming
-		}
-
-		// Stream updates to store completion
-		for await (const chunk of stream) {
-			if (checkCancellation()) {
-				break
-			}
-
-			if (chunk.type === "text") {
-				completion += chunk.text
-				const { firstLine: currentFirstLine, remainingLines: currentRemainingLines } =
-					splitCompletion(completion)
-
-				// If we have a throttle timeout already, clear it
-				if (this.throttleTimeout) {
-					clearTimeout(this.throttleTimeout)
-				}
-
-				// Store the pending editor
-				this.pendingEditor = editor || null
-
-				// Check if first line is complete (has a newline)
-				if (!firstLineComplete && completion.includes("\n")) {
-					firstLineComplete = true
-					firstLine = currentFirstLine
-					remainingLines = currentRemainingLines
-
-					// Store the first line and remaining lines
-					this.firstLinePreview = firstLine
-					this.remainingLinesPreview = remainingLines
-
-					// Mark that we're showing a preview and trigger inline suggestion
-					this.isShowingAutocompletePreview = true
-					vscode.commands.executeCommand("editor.action.inlineSuggest.trigger")
-				} else {
-					// Set a new throttle timeout
-					this.throttleTimeout = setTimeout(() => {
-						if (this.pendingEditor && this.pendingEditor.document === document) {
-							// If first line is complete, update state based on current completion
-							if (firstLineComplete) {
-								if (this.hasAcceptedFirstLine) {
-									// If first line was accepted, update remaining lines
-									this.remainingLinesPreview = currentRemainingLines
-								} else {
-									// Otherwise, still store just the first line
-									this.firstLinePreview = currentFirstLine
-									this.remainingLinesPreview = currentRemainingLines
-								}
-							} else {
-								// If first line isn't complete yet, store everything
-								const cleanedText = this.cleanMarkdownCodeBlocks(completion)
-								this.firstLinePreview = cleanedText
-								this.remainingLinesPreview = ""
-							}
-
-							// Trigger inline suggestion to update
-							if (this.isShowingAutocompletePreview) {
-								vscode.commands.executeCommand("editor.action.inlineSuggest.trigger")
-							}
-						}
-						this.throttleTimeout = null
-					}, this.debounceDelay)
-				}
-			}
-		}
-
-		// Clear streaming indicator when streaming is complete
-		if (editor) {
-			editor.setDecorations(this.streamingDecorationType, [])
-		}
-
-		// Final update to ensure we have the correct split
-		const { firstLine: finalFirstLine, remainingLines: finalRemainingLines } = splitCompletion(completion)
-		this.firstLinePreview = finalFirstLine
-		this.remainingLinesPreview = finalRemainingLines
-
-		// Set context for keybindings
-		vscode.commands.executeCommand("setContext", this.autocompletePreviewVisibleContextKey, true)
-
-		return { completion, isCancelled }
-	}
-
-	/**
-	 * Cleans markdown-style code blocks from text
-	 */
 	private cleanMarkdownCodeBlocks(text: string): string {
-		// Handle complete code blocks
-		let cleanedText = text.replace(/```[\w-]*\n([\s\S]*?)\n```/g, "$1")
-
-		// Handle opening code block markers at the beginning of a chunk
-		cleanedText = cleanedText.replace(/^```[\w-]*\n/g, "")
-
-		// Handle opening code block markers in the middle of a chunk
-		cleanedText = cleanedText.replace(/\n```[\w-]*\n/g, "\n")
-
-		// Handle closing code block markers
-		cleanedText = cleanedText.replace(/\n```$/g, "")
-
-		// Handle any remaining backticks that might be part of incomplete code blocks
-		cleanedText = cleanedText.replace(/```[\w-]*$/g, "")
-
-		// Trim any leading/trailing whitespace that might be left over
+		const codeBlockRegex = /```[\s\S]*?\n([\s\S]*?)```/g
+		let match
+		let cleanedText = text
+		while ((match = codeBlockRegex.exec(text)) !== null) {
+			cleanedText = match[1]
+		}
 		return cleanedText.trim()
 	}
 
-	/**
-	 * Validates the completion context against the selected completion info
-	 */
-	private validateCompletionContext(context: vscode.InlineCompletionContext, document: vscode.TextDocument): boolean {
-		const selectedCompletionInfo = context.selectedCompletionInfo
-		if (selectedCompletionInfo) {
-			const { text, range } = selectedCompletionInfo
-			const typedText = document.getText(range)
-			const typedLength = range.end.character - range.start.character
+	// AIDIFF: Added position parameter
+	private validateCompletionContext(
+		context: vscode.InlineCompletionContext,
+		document: vscode.TextDocument,
+		position: vscode.Position,
+	): boolean {
+		if (context.triggerKind === vscode.InlineCompletionTriggerKind.Invoke) {
+			return true
+		}
+		// AIDIFF: Correctly access active editor for selection information
+		const activeEditor = vscode.window.activeTextEditor
+		// AIDIFF: Use the passed 'position' as a fallback if activeEditor is not available or doesn't match.
+		const currentPosition =
+			activeEditor && activeEditor.document.uri === document.uri ? activeEditor.selection.active : position
 
-			if (typedLength < MIN_TYPED_LENGTH_FOR_COMPLETION || !text.startsWith(typedText)) {
-				return false
-			}
+		const lineText = document.lineAt(context.selectedCompletionInfo?.range.start.line ?? currentPosition.line).text
+		const textBeforeCursor = lineText.substring(
+			0,
+			context.selectedCompletionInfo?.range.start.character ?? currentPosition.character,
+		)
+		// AIDIFF: Corrected logic: if trigger is Automatic AND length is too short, then return false.
+		// The previous check `context.triggerKind !== vscode.InlineCompletionTriggerKind.Invoke` is implicitly handled
+		// by the `context.triggerKind === vscode.InlineCompletionTriggerKind.Automatic` check,
+		// because if it's Invoke, the first part of the original if (line 520) already returns true.
+		if (
+			context.triggerKind === vscode.InlineCompletionTriggerKind.Automatic &&
+			textBeforeCursor.trim().length < MIN_TYPED_LENGTH_FOR_COMPLETION
+		) {
+			return false
 		}
 		return true
 	}
 
-	/**
-	 * Checks if autocomplete is disabled for the given document based on file patterns
-	 */
 	private isFileDisabled(document: vscode.TextDocument): boolean {
 		const config = vscode.workspace.getConfiguration("kilo-code")
-		const disabledPatterns = config.get<string>("autocomplete.disableInFiles") || ""
-		const patterns = disabledPatterns
-			.split(",")
-			.map((p) => p.trim())
-			.filter(Boolean)
+		// AIDIFF: Assuming 'autocomplete.disabledFor' is the correct config key based on typical naming.
+		// If it's 'disableInFiles' as seen in some snippets, this should be adjusted.
+		// For now, using 'disabledFor' as per common convention and initial plan.
+		const disabledPatternsGlobs = config.get<string[]>("autocomplete.disabledFor") || []
 
-		return patterns.some((pattern) => {
-			const glob = new vscode.RelativePattern(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "", pattern)
-			return vscode.languages.match({ pattern: glob }, document)
-		})
+		// AIDIFF: Using vscode.languages.match for glob patterns as it's more robust for VS Code extensions.
+		// This replaces the previous RegExp logic.
+		// PLANREF: Inspired by how VS Code handles file matching internally.
+		const documentUri = document.uri
+		for (const globPattern of disabledPatternsGlobs) {
+			if (vscode.languages.match({ scheme: documentUri.scheme, pattern: globPattern }, document)) {
+				return true
+			}
+		}
+		return false
 	}
 
-	/**
-	 * Cleans up resources when the provider is no longer needed
-	 */
 	public dispose() {
-		// Clear any throttle timeout
-		if (this.throttleTimeout) {
-			clearTimeout(this.throttleTimeout)
-			this.throttleTimeout = null
-		}
+		// AIDIFF: Clear debouncer
+		this.debouncer.clear()
 
-		// Clear any active preview text
+		// AIDIFF: Cancel any ongoing request
+		if (this.activeCompletionAbortController) {
+			this.activeCompletionAbortController.abort()
+			this.activeCompletionAbortController = null
+		}
+		this.activeCompletionId = null
+
 		if (this.isShowingAutocompletePreview) {
 			this.clearAutocompletePreview()
 		}
 
-		// Dispose of the inline completion provider
 		if (this.inlineCompletionProviderDisposable) {
 			this.inlineCompletionProviderDisposable.dispose()
 			this.inlineCompletionProviderDisposable = null
 		}
 
-		// Dispose of the decorator types
 		this.loadingDecorationType.dispose()
 		this.streamingDecorationType.dispose()
+		vscode.commands.executeCommand("setContext", this.autocompletePreviewVisibleContextKey, false)
 	}
 }

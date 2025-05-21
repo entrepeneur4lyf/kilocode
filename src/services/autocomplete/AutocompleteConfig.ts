@@ -18,6 +18,10 @@ export class AutocompleteConfig {
 			useRecentlyEdited: config.get<boolean>("autocomplete.useRecentlyEdited") || true,
 			onlyMyCode: config.get<boolean>("autocomplete.onlyMyCode") || true,
 			multilineCompletions: config.get<string>("autocomplete.multilineCompletions") || "auto",
+			// AIDIFF: Add ollama specific settings to the config object type
+			ollamaModelId: config.get<string>("autocomplete.ollamaModelId"), // Allow undefined if not set
+			ollamaBaseUrl: config.get<string>("autocomplete.ollamaBaseUrl"), // Allow undefined if not set
+			ollamaParameters: config.get<object>("autocomplete.ollamaParameters") || {},
 		}
 	}
 

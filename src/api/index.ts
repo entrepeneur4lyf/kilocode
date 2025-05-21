@@ -27,12 +27,24 @@ import { ChutesHandler } from "./providers/chutes"
 import { LiteLLMHandler } from "./providers/litellm"
 import { KilocodeOpenrouterHandler } from "./providers/kilocode-openrouter"
 
+// AIDIFF: Add params interface for getCompletionStream
+export interface CompletionStreamParams {
+	prompt: string
+	systemPrompt?: string
+	modelId: string // Passed by AutocompleteProvider
+	temperature?: number
+	stop?: string[]
+	// Consider adding other common parameters like max_tokens, top_p if generally applicable
+}
+
 export interface SingleCompletionHandler {
 	completePrompt(prompt: string): Promise<string>
 }
 
 export interface ApiHandler {
 	createMessage(systemPrompt: string, messages: Anthropic.Messages.MessageParam[]): ApiStream
+	// AIDIFF: Add getCompletionStream method for autocomplete
+	getCompletionStream(params: CompletionStreamParams, abortSignal: AbortSignal): ApiStream
 
 	getModel(): { id: string; info: ModelInfo }
 

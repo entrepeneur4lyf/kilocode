@@ -1,15 +1,17 @@
 // AIDIFF: Integrating continue/ templating logic
 // PLANREF: continue/core/autocomplete/templating/index.ts
-import { CodeContext, CodeContextDefinition } from "./ContextGatherer" // AIDIFF: Changed Definition to CodeContextDefinition
-import { /* AutocompleteTemplate, */ getTemplateForModel } from "./templating/AutocompleteTemplate" // AIDIFF: Added AutocompleteTemplate, commented out as unused for now
+import { CodeContext, CodeContextDefinition } from "./ContextGatherer"
+import { AutocompleteTemplate, getTemplateForModel } from "./templating/AutocompleteTemplate" // AIDIFF: AutocompleteTemplate is used by getTemplateForModel
 import { getStopTokens } from "./templating/getStopTokens"
 import * as vscode from "vscode"
-import { /* AutocompleteLanguageInfo, */ getLanguageInfo } from "./AutocompleteLanguageInfo" // AIDIFF: Added AutocompleteLanguageInfo, commented out as unused for now
+import { AutocompleteLanguageInfo, getLanguageInfo } from "./AutocompleteLanguageInfo" // AIDIFF: AutocompleteLanguageInfo is used by getLanguageInfo
 import {
-	/* AutocompleteCodeSnippet, */ /* AutocompleteContextSnippet, */ AutocompleteSnippet,
+	AutocompleteSnippet,
 	AutocompleteSnippetType,
-} from "./templating/snippetTypes" // AIDIFF: Added snippet types, commented out unused
-import { getUriPathBasename } from "./templating/uri" // AIDIFF: Added for reponame
+	// AIDIFF: Specific snippet types like AutocompleteCodeSnippet are not directly instantiated here after changes,
+	// but AutocompleteSnippet union type is used.
+} from "./templating/snippetTypes"
+import { getUriPathBasename } from "./templating/uri"
 // AIDIFF: Removed Handlebars as it's not used directly in the new approach from continue/
 // We will use simple string replacement for string templates, and function calls for function templates.
 
@@ -19,11 +21,11 @@ import { getUriPathBasename } from "./templating/uri" // AIDIFF: Added for repon
 export interface PromptOptions {
 	maxTokens: number
 	temperature: number
-	language: string
+	language: string // AIDIFF: This is the language ID string e.g. "typescript"
 	includeImports: boolean
 	includeDefinitions: boolean
-	multilineCompletions: boolean | "auto"
-	stop?: string[] // AIDIFF: Added stop tokens property
+	multilineCompletions: string | boolean | "auto" // AIDIFF: Allow string to match AutocompleteConfig, "true"/"false" can be parsed if needed.
+	stop?: string[]
 }
 
 /**
@@ -38,7 +40,7 @@ export class PromptRenderer {
 		includeDefinitions: true,
 		multilineCompletions: "auto",
 	}
-	private modelName: string = "qwen2.5-coder:1.5b"
+	private modelName: string = "qwen2.5-coder:1.5b" // AIDIFF: Default model name
 
 	/**
 	 * Create a new prompt renderer
@@ -52,81 +54,72 @@ export class PromptRenderer {
 
 	/**
 	 * Render a prompt for autocomplete using templates based on the model
-	 * @param context Code context
-	 * @param options Prompt options
-	 * @returns Rendered prompt, prefix, suffix, and completion options
+	 * @param context Code context from ContextGatherer
+	 * @param options Prompt options to override defaults
+	 * @returns Rendered prompt, prefix, suffix, and completion options for the LLM
 	 */
-	// AIDIFF: Updated method signature and logic to align with continue/renderPrompt
-	// PLANREF: continue/core/autocomplete/templating/index.ts (renderPrompt function)
+	// PLANREF: Main structure mirrors continue/core/autocomplete/templating/index.ts (renderPrompt function)
 	renderPrompt(
 		context: CodeContext,
 		options: Partial<PromptOptions> = {},
 	): {
 		prompt: string
-		prefix: string
-		suffix: string
-		completionOptions: Partial<PromptOptions> | undefined // AIDIFF: Changed to PromptOptions for consistency
+		prefix: string // The prefix text used in the FIM template
+		suffix: string // The suffix text used in the FIM template
+		completionOptions: Partial<PromptOptions> | undefined // Options to pass to the LLM API
 	} {
 		const mergedOptions = { ...this.defaultOptions, ...options }
-		const langInfo = getLanguageInfo(mergedOptions.language)
+		const langInfo: AutocompleteLanguageInfo = getLanguageInfo(mergedOptions.language)
 
-		// Get the appropriate template for the model
-		const currentTemplate = getTemplateForModel(this.modelName) // AIDIFF: Renamed for clarity
+		const currentTemplate: AutocompleteTemplate = getTemplateForModel(this.modelName)
 
-		// Construct prefix and suffix from context
 		let prefix = ""
 		if (context.precedingLines.length > 0) {
 			prefix += `${context.precedingLines.join("\n")}\n`
 		}
 		prefix += context.currentLine
 
-		// For suffix, use following lines
 		let suffix = ""
 		if (context.followingLines.length > 0) {
 			suffix = `\n${context.followingLines.join("\n")}`
 		}
-		// AIDIFF: Ensure suffix is at least a newline, as in continue/
+		// PLANREF: continue/core/autocomplete/templating/index.ts ensures suffix is at least a newline
 		if (suffix === "") {
 			suffix = "\n"
 		}
 
-		const filepath = vscode.window.activeTextEditor?.document.uri.fsPath || "untitled"
+		const filepath = vscode.window.activeTextEditor?.document.uri.fsPath || "untitled.txt" // AIDIFF: Default to untitled.txt
 		const workspaceFolders = vscode.workspace.workspaceFolders
 		const reponame = workspaceFolders?.[0]?.uri.fsPath
 			? getUriPathBasename(workspaceFolders[0].uri.fsPath)
-			: "myproject"
+			: "my-repository" // AIDIFF: Default reponame
 		const workspaceUris = workspaceFolders?.map((folder) => folder.uri.toString()) || []
 
-		// AIDIFF: Prepare snippets from context (imports and definitions)
-		// PLANREF: continue/core/autocomplete/templating/index.ts (getSnippets, formatSnippets)
+		// PLANREF: continue/core/autocomplete/templating/index.ts (calls getSnippets)
+		// AIDIFF: Simplified snippet creation directly from CodeContext.
+		// continue/ has a more complex getSnippets and SnippetPayload system which is not fully replicated here.
 		const snippets: AutocompleteSnippet[] = []
 		if (mergedOptions.includeImports && context.imports.length > 0) {
-			// AIDIFF: Treat imports as context snippets for now.
-			// This could be refined if continue/ has a more specific way to handle imports.
 			context.imports.forEach((importStatement, index) => {
 				snippets.push({
-					type: AutocompleteSnippetType.Context, // Or Code if more appropriate
+					type: AutocompleteSnippetType.Context, // AIDIFF: Using Context type for imports
 					content: importStatement,
-					filepath: `${filepath}_import_${index}`, // Placeholder filepath for imports
+					// AIDIFF: Providing a more structured, albeit placeholder, filepath for context snippets.
+					filepath: `context://imports/${getUriPathBasename(filepath)}#${index}`,
 				})
 			})
 		}
 		if (mergedOptions.includeDefinitions && context.definitions.length > 0) {
 			context.definitions.forEach((def: CodeContextDefinition) => {
-				// AIDIFF: Changed to CodeContextDefinition
 				snippets.push({
-					type: AutocompleteSnippetType.Code,
+					type: AutocompleteSnippetType.Code, // AIDIFF: Definitions are Code snippets
 					filepath: def.filepath,
 					content: def.content,
-					// AIDIFF: CodeContextDefinition doesn't have a direct language prop.
-					// Language is part of mergedOptions or derived from filepath if needed by a specific template.
-					// For now, omitting direct language from snippet if not readily available on def.
-					// language: def.language,
+					// language: def.language // Language is not on CodeContextDefinition, derived from main file or filepath extension if needed by template
 				})
 			})
 		}
 
-		// AIDIFF: Apply compilePrefixSuffix if available
 		// PLANREF: continue/core/autocomplete/templating/index.ts (compilePrefixSuffix logic)
 		if (currentTemplate.compilePrefixSuffix) {
 			;[prefix, suffix] = currentTemplate.compilePrefixSuffix(
@@ -138,46 +131,54 @@ export class PromptRenderer {
 				workspaceUris,
 			)
 		} else {
-			// AIDIFF: Basic snippet formatting if no compilePrefixSuffix
-			// PLANREF: continue/core/autocomplete/templating/formatting.ts (formatSnippets - simplified)
-			const formattedSnippets = snippets
-				.map((snippet) => {
-					if (snippet.type === AutocompleteSnippetType.Code) {
-						return `// From ${getUriPathBasename(snippet.filepath)}\n${snippet.content}`
-					}
-					return snippet.content // For other types, just use content
-				})
-				.join("\n\n")
-			if (formattedSnippets) {
-				prefix = `${formattedSnippets}\n\n${prefix}`
+			// PLANREF: continue/core/autocomplete/templating/formatting.ts (formatSnippets - simplified adaptation)
+			// AIDIFF: If no compilePrefixSuffix, prepend formatted snippets to the prefix.
+			let formattedSnippetsContent = ""
+			if (snippets.length > 0) {
+				formattedSnippetsContent = snippets
+					.map((snippet) => {
+						let header = ""
+						// AIDIFF: Provide a generic header for snippets if a filepath is available.
+						// PLANREF: Inspired by formatCodeSnippet in continue/core/autocomplete/templating/formatting.ts
+						if ("filepath" in snippet && snippet.filepath) {
+							header = `// Path: ${getUriPathBasename(snippet.filepath)}\n`
+						}
+						return `${header}${snippet.content}`
+					})
+					.join("\n\n") // AIDIFF: Using \n\n for better separation of snippets.
+			}
+
+			if (formattedSnippetsContent) {
+				// PLANREF: continue/core/autocomplete/templating/index.ts (prefix = [formattedSnippets, prefix].join("\n");)
+				// AIDIFF: Adapted to use \n\n for clearer separation.
+				prefix = `${formattedSnippetsContent}\n\n${prefix}`
 			}
 		}
 
-		// Create prompt using template
 		let prompt: string
+		// PLANREF: continue/core/autocomplete/templating/index.ts (template rendering logic)
 		if (typeof currentTemplate.template === "string") {
-			// AIDIFF: Simple string replacement, similar to continue/renderStringTemplate but without Handlebars
 			// PLANREF: continue/core/autocomplete/templating/index.ts (renderStringTemplate)
+			// AIDIFF: Using simple string replacement instead of Handlebars.
 			prompt = currentTemplate.template
 				.replace("{{{prefix}}}", prefix)
 				.replace("{{{suffix}}}", suffix)
-				.replace("{{{filename}}}", getUriPathBasename(filepath)) // AIDIFF: Added filename replacement
-				.replace("{{{reponame}}}", reponame) // AIDIFF: Added reponame replacement
-				.replace("{{{language}}}", langInfo.name) // AIDIFF: Added language replacement
+				.replace("{{{filename}}}", getUriPathBasename(filepath))
+				.replace("{{{reponame}}}", reponame)
+				.replace("{{{language}}}", langInfo.name)
 		} else {
-			// Use function template
+			// AIDIFF: Calling the template function with all required arguments.
 			prompt = currentTemplate.template(
 				prefix,
 				suffix,
 				filepath,
 				reponame,
-				langInfo.name,
+				langInfo.name, // language name string
 				snippets,
 				workspaceUris,
 			)
 		}
 
-		// AIDIFF: Determine stop tokens using the updated getStopTokens
 		// PLANREF: continue/core/autocomplete/templating/index.ts (getStopTokens call)
 		const stop = getStopTokens(currentTemplate.completionOptions, langInfo, this.modelName)
 
@@ -186,19 +187,23 @@ export class PromptRenderer {
 			prefix,
 			suffix,
 			completionOptions: {
-				...currentTemplate.completionOptions, // AIDIFF: Spread original completion options
-				stop, // AIDIFF: Add determined stop tokens
-				maxTokens: mergedOptions.maxTokens, // AIDIFF: Corrected to camelCase
+				...currentTemplate.completionOptions,
+				stop, // AIDIFF: Determined stop tokens
+				// AIDIFF: Pass through common options from mergedOptions
+				maxTokens: mergedOptions.maxTokens,
 				temperature: mergedOptions.temperature,
+				// Other options like topP, topK could be added if supported by PromptOptions and LLM
 			},
 		}
 	}
 
 	/**
-	 * Render a system prompt for autocomplete
-	 * @returns System prompt
+	 * Render a system prompt for autocomplete. This is specific to our implementation.
+	 * @returns System prompt string
 	 */
 	renderSystemPrompt(): string {
+		// AIDIFF: This system prompt is a generic one. Specific models might have their own system prompt requirements.
+		// For now, this is kept as a general instruction.
 		return `You are an AI coding assistant that provides accurate and helpful code completions.
 Your task is to complete the code at the cursor position.
 Provide only the completion text, without any explanations or markdown formatting.
@@ -206,52 +211,38 @@ The completion should be valid, syntactically correct code that fits the context
 	}
 
 	/**
-	 * Get the stop tokens for the current model
+	 * Get the stop tokens for the current model.
+	 * This method can be used if only stop tokens are needed without full prompt rendering.
 	 * @returns Array of stop tokens
 	 */
 	getStopTokens(): string[] {
-		// AIDIFF: This method now primarily relies on the stop tokens determined by renderPrompt.
-		// It can be simplified or used as a fallback if renderPrompt's result isn't directly available.
-		// For direct usage with ApiHandler, the stop tokens from renderPrompt's result should be preferred.
+		// AIDIFF: This method directly uses the getStopTokens utility from the templating folder.
+		// It ensures consistency if stop tokens are needed separately from the full renderPrompt call.
 		const template = getTemplateForModel(this.modelName)
 		const langInfo = getLanguageInfo(this.defaultOptions.language)
-		// AIDIFF: Using the updated getStopTokens function from the templating directory
 		return getStopTokens(template.completionOptions, langInfo, this.modelName)
 	}
 
 	/**
-	 * Extract completion from model response
-	 * @param response Model response
-	 * @returns Extracted completion
+	 * Extract completion from model response. This is specific to our implementation.
+	 * @param response Model response string
+	 * @returns Extracted completion string
 	 */
 	extractCompletion(response: string): string {
-		// Remove any markdown code block formatting
+		// AIDIFF: Basic extraction logic. May need refinement based on typical model outputs.
 		let completion = response.trim()
 
-		// Remove markdown code blocks if present
+		// Remove markdown code blocks if present (e.g., ```typescript\n...\n```)
 		const codeBlockRegex = /^```[\w]*\n([\s\S]*?)\n```$/
 		const match = completion.match(codeBlockRegex)
 		if (match) {
-			completion = match[1]
+			completion = match[1].trim() // AIDIFF: Trim content inside code block as well
 		}
 
-		// Remove any explanations or comments that might be at the beginning
-		const lines = completion.split("\n")
-		let startIndex = 0
-
-		for (let i = 0; i < lines.length; i++) {
-			if (
-				lines[i].trim().startsWith("//") ||
-				lines[i].trim().startsWith("#") ||
-				lines[i].trim().startsWith("/*")
-			) {
-				startIndex = i + 1
-			} else if (lines[i].trim() !== "") {
-				break
-			}
-		}
-
-		completion = lines.slice(startIndex).join("\n")
+		// AIDIFF: Removed the loop that stripped leading comments as it might be too aggressive.
+		// Models are generally instructed to provide only code. If they still add comments,
+		// it might be part of the intended completion or require more sophisticated stripping.
+		// Keeping it simple for now.
 
 		return completion
 	}
