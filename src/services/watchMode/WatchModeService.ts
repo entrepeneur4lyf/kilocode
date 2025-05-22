@@ -7,6 +7,7 @@ import { ApiHandler, buildApiHandler } from "../../api"
 import { ContextProxy } from "../../core/config/ContextProxy"
 import { writePromptToDebugFile, writePromptResponseToDebugFile } from "./PromptDebugger"
 import { detectAIComments, buildAIPrompt, processAIResponse } from "./commentProcessor"
+import { WatchModeHighlighter } from "./WatchModeHighlighter"
 
 /**
  * Service that watches files for changes and processes AI comments
@@ -18,6 +19,7 @@ export class WatchModeService {
 	private isActive: boolean = false
 	private outputChannel?: vscode.OutputChannel
 	private ui: WatchModeUI
+	private highlighter: WatchModeHighlighter
 	private processingFiles: Set<string> = new Set()
 	private currentDebugId?: string
 
@@ -60,6 +62,7 @@ export class WatchModeService {
 		this.outputChannel = outputChannel
 		this.config = this.defaultConfig
 		this.ui = new WatchModeUI(context)
+		this.highlighter = new WatchModeHighlighter()
 
 		this.setupApiHandler()
 
@@ -293,67 +296,6 @@ export class WatchModeService {
 		}
 	}
 
-	/**
-	 * Highlights an AI comment in the editor with a glowing blue animation
-	 * @param document The document containing the comment
-	 * @param comment The AI comment data
-	 * @returns A function to clear the highlight
-	 */
-	private highlightAICommentWithAnimation(document: vscode.TextDocument, comment: AICommentData): () => void {
-		// Get the editor for the document
-		const editor = vscode.window.visibleTextEditors.find(
-			(editor) => editor.document.uri.toString() === document.uri.toString(),
-		)
-
-		if (!editor) {
-			// Return a no-op function if no editor was found
-			return () => {}
-		}
-
-		// Create a range for the comment
-		const range = new vscode.Range(comment.startPos, comment.endPos)
-
-		// Create decorations with different intensities for the pulsing effect
-		const decorationBright = vscode.window.createTextEditorDecorationType({
-			backgroundColor: "rgba(0, 122, 255, 0.4)",
-			borderColor: "rgba(0, 122, 255, 0.9)",
-			borderWidth: "1px",
-			borderStyle: "solid",
-			isWholeLine: true,
-		})
-
-		const decorationDim = vscode.window.createTextEditorDecorationType({
-			backgroundColor: "rgba(0, 122, 255, 0.1)",
-			borderColor: "rgba(0, 122, 255, 0.6)",
-			borderWidth: "1px",
-			borderStyle: "solid",
-			isWholeLine: true,
-		})
-
-		// Start with the bright decoration
-		let isBright = true
-		editor.setDecorations(decorationBright, [range])
-
-		// Create an interval to toggle between bright and dim
-		const interval = setInterval(() => {
-			if (isBright) {
-				editor.setDecorations(decorationBright, [])
-				editor.setDecorations(decorationDim, [range])
-			} else {
-				editor.setDecorations(decorationDim, [])
-				editor.setDecorations(decorationBright, [range])
-			}
-			isBright = !isBright
-		}, 100) // Toggle every 800ms for a gentle pulsing effect
-
-		// Return a function to clear the highlight and stop the animation
-		return () => {
-			clearInterval(interval)
-			decorationBright.dispose()
-			decorationDim.dispose()
-		}
-	}
-
 	private async processAIComment(document: vscode.TextDocument, comment: AICommentData): Promise<void> {
 		this.log("=== DEBUGGING: processAIComment START ===")
 		console.log("[WatchMode DEBUG] processAIComment started")
@@ -365,7 +307,7 @@ export class WatchModeService {
 			console.log("[WatchMode DEBUG] Processing comment:", comment.content.substring(0, 100))
 
 			// Highlight the AI comment with animation
-			const clearHighlight = this.highlightAICommentWithAnimation(document, comment)
+			const clearHighlight = this.highlighter.highlightAICommentWithAnimation(document, comment)
 			this.log("Comment highlighted with animation in editor")
 
 			// Emit event that we're starting to process this comment
@@ -644,5 +586,3 @@ export class WatchModeService {
 		this._onDidFinishProcessingComment.dispose()
 	}
 }
-
-
