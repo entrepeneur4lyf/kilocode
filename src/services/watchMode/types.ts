@@ -70,7 +70,7 @@ export interface WatchModeConfig {
 	model: string
 	/** Debounce time in milliseconds */
 	debounceTime: number
-	/** Prefix for AI comments (e.g., "KILO!") */
+	/** Prefix for AI comments (e.g., "KO!") */
 	commentPrefix: string
 }
 

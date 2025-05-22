@@ -69,7 +69,7 @@ export class WatchModeService {
 		exclude: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**"],
 		model: "claude-3.7",
 		debounceTime: 2000, // 2 seconds
-		commentPrefix: "KILO!", // Default AI comment prefix
+		commentPrefix: "KO!", // Default AI comment prefix
 	}
 	private config: WatchModeConfig
 
@@ -621,7 +621,7 @@ export class WatchModeService {
 		clearHighlight: () => void,
 	): Promise<void> {
 		// Maximum number of reflection attempts
-		const MAX_REFLECTION_ATTEMPTS = 3
+		const MAX_REFLECTION_ATTEMPTS = 1
 		let currentAttempt = 0
 		let success = false
 		let lastResponse: string | null = null

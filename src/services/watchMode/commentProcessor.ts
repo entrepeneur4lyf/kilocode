@@ -28,20 +28,20 @@ export class SearchTextNotUnique extends Error {
 
 // Regular expressions for detecting KILO comments
 const createAICommentPatterns = (prefix: string) => [
-	// For single line comments: // KILO! do something (with or without space after //)
+	// For single line comments: // KO! do something (with or without space after //)
 	new RegExp(`\\/\\/\\s*.*?${prefix}(.*)$`, "gm"),
-	// For multi-line comments: /* KILO! do something */
+	// For multi-line comments: /* KO! do something */
 	new RegExp(`\\/\\*\\s*.*?${prefix}(.+?)\\*\\/`, "gms"),
-	// For inline comments: /** KILO! do something */
+	// For inline comments: /** KO! do something */
 	new RegExp(`\\/\\*\\*\\s*.*?${prefix}(.+?)\\*\\/`, "gms"),
 ]
 
-// Default to "KILO!" if no prefix is provided
-let AI_COMMENT_PATTERNS = createAICommentPatterns("KILO!")
+// Default to "KO!" if no prefix is provided
+let AI_COMMENT_PATTERNS = createAICommentPatterns("KO!")
 
 /**
  * Updates the AI comment patterns with a new prefix
- * @param prefix The prefix to use for AI comments (e.g., "KILO!")
+ * @param prefix The prefix to use for AI comments (e.g., "KO!")
  */
 export const updateAICommentPatterns = (prefix: string): void => {
 	AI_COMMENT_PATTERNS = createAICommentPatterns(prefix)
@@ -167,7 +167,7 @@ export const detectAIComments = (options: CommentProcessorOptions): CommentProce
  * @param commentData The AI comment data
  */
 // Keep track of the current AI comment prefix for use in prompts
-let currentAICommentPrefix = "KILO!"
+let currentAICommentPrefix = "KO!"
 
 /**
  * Updates the current AI comment prefix used in prompts
@@ -468,7 +468,8 @@ export function findDiffs(content: string): DiffEdit[] {
 		content = content + "\n"
 	}
 
-	const lines = content.split("\n").map((line) => line + "\n")
+	// Split by newline but don't add extra newlines to each line
+	const lines = content.split("\n")
 	let lineNum = 0
 	const edits: DiffEdit[] = []
 
@@ -505,7 +506,7 @@ export function findDiffs(content: string): DiffEdit[] {
 				diffContent += line + "\n"
 				if (line.trim() === "" && diffContent.includes("+++") && diffContent.includes("@@")) {
 					// Process this diff block
-					const dummyLines = diffContent.split("\n").map((l) => l + "\n")
+					const dummyLines = diffContent.split("\n")
 					const [_, theseEdits] = processDiffBlock(dummyLines, 0)
 					edits.push(...theseEdits)
 					inDiff = false
@@ -516,7 +517,7 @@ export function findDiffs(content: string): DiffEdit[] {
 
 		// Add the last diff if there is one
 		if (inDiff && diffContent.includes("+++") && diffContent.includes("@@")) {
-			const dummyLines = diffContent.split("\n").map((l) => l + "\n")
+			const dummyLines = diffContent.split("\n")
 			const [_, theseEdits] = processDiffBlock(dummyLines, 0)
 			edits.push(...theseEdits)
 		}
@@ -669,8 +670,15 @@ export function hunkToBeforeAfter(hunk: string[], asLines = false): [string[] | 
 	const after: string[] = []
 
 	for (const line of hunk) {
-		if (line.length < 2) {
+		if (!line || line.length === 0) {
 			// Empty line, treat as unchanged
+			before.push("")
+			after.push("")
+			continue
+		}
+
+		if (line.length < 2) {
+			// Very short line, treat as unchanged
 			before.push(line)
 			after.push(line)
 			continue
@@ -693,7 +701,8 @@ export function hunkToBeforeAfter(hunk: string[], asLines = false): [string[] | 
 		return [before, after]
 	}
 
-	return [before.join(""), after.join("")]
+	// Join with newlines to ensure proper line separation
+	return [before.join("\n"), after.join("\n")]
 }
 
 /**
