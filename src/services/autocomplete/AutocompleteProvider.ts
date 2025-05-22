@@ -646,15 +646,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 	 * Cleans up resources when the provider is no longer needed
 	 */
 	const dispose = () => {
-		// Clear any active preview text
-		const previewState = {
-			firstLinePreview,
-			remainingLinesPreview,
-			hasAcceptedFirstLine,
-			isShowingAutocompletePreview,
-			isLoadingCompletion,
-		}
-		if (previewState.isShowingAutocompletePreview) {
+		if (isShowingAutocompletePreview) {
 			helpers.clearAutocompletePreview()
 		}
 
