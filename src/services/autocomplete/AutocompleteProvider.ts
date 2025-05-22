@@ -451,6 +451,12 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		// Gather context
 		const codeContext = await this.contextGatherer.gatherContext(document, position, useImports, useDefinitions)
 
+		// Generate snippets
+		const snippets = [
+			...generateImportSnippets(useImports, codeContext.imports, document.uri.fsPath),
+			...generateDefinitionSnippets(useDefinitions, codeContext.definitions),
+		]
+
 		// Define options for snippet generation and prompt rendering
 		const promptOptions: PromptOptions = {
 			language: document.languageId,
@@ -460,12 +466,6 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 			maxTokens: this.promptRenderer["defaultOptions"].maxTokens,
 			temperature: this.promptRenderer["defaultOptions"].temperature,
 		}
-
-		// Generate snippets
-		const snippets = [
-			...generateImportSnippets(promptOptions.includeImports, codeContext.imports, document.uri.fsPath),
-			...generateDefinitionSnippets(promptOptions.includeDefinitions, codeContext.definitions),
-		]
 
 		// Render prompts
 		const prompt = this.promptRenderer.renderPrompt(codeContext, snippets, promptOptions)
