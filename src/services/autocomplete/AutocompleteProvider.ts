@@ -429,7 +429,20 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		})
 
 		// Process the completion stream
+		const startTime = performance.now()
 		const result = await this.processCompletionStream(systemPrompt, prompt.prompt, completionId, document)
+		const duration = performance.now() - startTime
+		console.info(`
+			Completion text generated.
+
+			System prompt: """${systemPrompt}"""
+
+			Prompt: """${prompt.prompt}"""
+
+			Completion: """${result.completion}"""
+
+			Duration: ${duration} ms
+			`)
 
 		if (result.isCancelled || token.isCancellationRequested) {
 			// Make sure to clear the loading indicator if the completion is cancelled
