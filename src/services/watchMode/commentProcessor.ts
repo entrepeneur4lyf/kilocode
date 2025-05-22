@@ -1510,16 +1510,9 @@ function calculateSimilarity(a: string, b: string): number {
 }
 
 /**
- * Processes the AI response and applies it to the document
- * @param document The document to modify
- * @param commentData The original AI comment data
- * @param response The AI response
- * @returns A promise that resolves to true if the response was applied successfully
- */
-/**
  * Maximum number of reflection attempts for failed edits
  */
-const MAX_REFLECTION_ATTEMPTS = 3
+const MAX_REFLECTION_ATTEMPTS = 1
 
 /**
  * Processes the AI response and applies it to the document
