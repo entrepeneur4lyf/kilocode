@@ -7,7 +7,6 @@ import * as vscode from "vscode"
 import { AutocompleteLanguageInfo, getLanguageInfo } from "./AutocompleteLanguageInfo" // AIDIFF: AutocompleteLanguageInfo is used by getLanguageInfo
 import {
 	AutocompleteSnippet,
-	// AutocompleteSnippetType, // Removed AutocompleteSnippetType
 	// AIDIFF: Specific snippet types like AutocompleteCodeSnippet are not directly instantiated here after changes,
 	// but AutocompleteSnippet union type is used.
 } from "./templating/snippetTypes"
