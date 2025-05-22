@@ -494,8 +494,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 				item = new vscode.InlineCompletionItem(completionText)
 			}
 
-			// Set command to ensure VS Code knows this is a completion that can be accepted with Tab
-			item.command = { command: "editor.action.inlineSuggest.commit", title: "Accept Completion" }
 			isShowingAutocompletePreview = true
 			vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, true)
 
