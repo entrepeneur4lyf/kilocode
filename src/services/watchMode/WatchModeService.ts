@@ -31,7 +31,7 @@ export class WatchModeService {
 	private apiHandler: ApiHandler | null = null
 	private watchers: Map<string, vscode.FileSystemWatcher> = new Map()
 	private pendingProcessing: Map<string, ReturnType<typeof setTimeout>> = new Map()
-	private isActive: boolean = false
+	private _isActive: boolean = false
 	private outputChannel?: vscode.OutputChannel
 	private ui: WatchModeUI
 	private highlighter: WatchModeHighlighter
@@ -41,6 +41,7 @@ export class WatchModeService {
 	private staticHighlights: Map<string, () => void> = new Map()
 	private recentlyProcessedFiles: Map<string, number> = new Map()
 	private processingDebounceTime: number = 500 // ms to prevent duplicate processing
+	private quickCommandDocument?: vscode.TextDocument // Track the document that initiated a quick command
 
 	// Track active files for context management
 	private activeFiles: Set<string> = new Set()
@@ -574,9 +575,20 @@ export class WatchModeService {
 				`Processing AI comment: "${comment.content.substring(0, 50)}${comment.content.length > 50 ? "..." : ""}"`,
 			)
 
+			// Check if this is from a quick command and we have a tracked document
+			const isQuickCommand = this.quickCommandDocument !== undefined
+			if (isQuickCommand) {
+				this.log(
+					`Processing comment from quick command, using tracked document: ${vscode.workspace.asRelativePath(this.quickCommandDocument!.uri)}`,
+				)
+			}
+
+			// Use the tracked document if this is from a quick command
+			const documentToUse = isQuickCommand ? this.quickCommandDocument! : document
+
 			// Highlight the AI comment with animation
 			const clearHighlight = this.highlighter.highlightRange(
-				document,
+				document, // Still highlight in the original document
 				new vscode.Range(comment.startPos, comment.endPos),
 				{
 					backgroundColor: "rgba(0, 122, 255, 0.4)",
@@ -596,7 +608,13 @@ export class WatchModeService {
 			this.log(`Trigger type determined: ${triggerType}`)
 
 			// Process with reflection support (up to 3 attempts)
-			await this.processWithReflection(document, comment, triggerType, clearHighlight)
+			await this.processWithReflection(documentToUse, comment, triggerType, clearHighlight)
+
+			// Clear the tracked document after processing
+			if (isQuickCommand) {
+				this.log(`Clearing tracked quick command document`)
+				this.quickCommandDocument = undefined
+			}
 		} catch (error) {
 			this.log(`Error processing AI comment: ${error instanceof Error ? error.message : String(error)}`)
 			this._onDidFinishProcessingComment.fire({
@@ -604,6 +622,12 @@ export class WatchModeService {
 				comment,
 				success: false,
 			})
+
+			// Clear the tracked document in case of error
+			if (this.quickCommandDocument) {
+				this.log(`Clearing tracked quick command document due to error`)
+				this.quickCommandDocument = undefined
+			}
 		}
 	}
 
@@ -751,7 +775,9 @@ export class WatchModeService {
 				// Process the AI response
 				this.log(`Processing AI response (attempt ${currentAttempt})...`)
 				try {
-					success = await processAIResponse(document, comment, apiResponse, currentAttempt)
+					// Use the tracked document if this is from a quick command
+					const documentToProcess = this.quickCommandDocument || document
+					success = await processAIResponse(documentToProcess, comment, apiResponse, currentAttempt)
 					this.log(`Response processed, success: ${success}`)
 
 					// If successful, break out of the loop
@@ -934,7 +960,7 @@ export class WatchModeService {
 	 * @returns True if the service was started, false otherwise
 	 */
 	public start(): boolean {
-		if (this.isActive) {
+		if (this._isActive) {
 			this.log("Watch mode is already active")
 			return false
 		}
@@ -947,7 +973,7 @@ export class WatchModeService {
 		this.log("Starting watch mode")
 		this.loadConfig()
 		this.initializeWatchers()
-		this.isActive = true
+		this._isActive = true
 		this._onDidChangeActiveState.fire(true)
 		this.log("Watch mode started")
 		return true
@@ -957,7 +983,7 @@ export class WatchModeService {
 	 * Stops the watch mode service
 	 */
 	public stop(): void {
-		if (!this.isActive) {
+		if (!this._isActive) {
 			this.log("Watch mode is not active")
 			return
 		}
@@ -974,7 +1000,7 @@ export class WatchModeService {
 		// Dispose document listeners
 		this.disposeDocumentListeners()
 
-		this.isActive = false
+		this._isActive = false
 		this._onDidChangeActiveState.fire(false)
 		this.log("Watch mode stopped")
 	}
@@ -983,7 +1009,7 @@ export class WatchModeService {
 	 * Returns whether the watch mode service is active
 	 */
 	public isWatchModeActive(): boolean {
-		return this.isActive
+		return this._isActive
 	}
 
 	/**
@@ -991,11 +1017,110 @@ export class WatchModeService {
 	 * @returns True if the service is now active, false otherwise
 	 */
 	public toggle(): boolean {
-		if (this.isActive) {
+		if (this._isActive) {
 			this.stop()
 			return false
 		} else {
 			return this.start()
+		}
+	}
+
+	/**
+	 * Gets whether the watch mode service is currently active
+	 */
+	public get isActive(): boolean {
+		return this._isActive
+	}
+
+	/**
+	 * Processes a quick command by creating a temporary AI comment in the document
+	 * @param document The document to process
+	 * @param command The command text from the user
+	 */
+	public async processQuickCommand(document: vscode.TextDocument, command: string): Promise<void> {
+		try {
+			this.log(`Processing quick command: ${command}`)
+
+			// Store a reference to the document that initiated the quick command
+			this.quickCommandDocument = document
+			const documentPath = vscode.workspace.asRelativePath(document.uri)
+			this.log(`Tracking quick command document: ${documentPath}`)
+
+			// Get the current cursor position
+			const activeEditor = vscode.window.activeTextEditor
+			if (!activeEditor || activeEditor.document !== document) {
+				throw new Error("No active editor or document mismatch")
+			}
+
+			const cursorPosition = activeEditor.selection.active
+			const line = document.lineAt(cursorPosition.line)
+
+			// Determine the appropriate comment syntax based on language
+			const languageId = document.languageId
+			let commentPrefix = "//"
+			let commentSuffix = ""
+
+			// Adjust comment syntax for different languages
+			switch (languageId) {
+				case "python":
+				case "ruby":
+				case "perl":
+				case "bash":
+				case "shell":
+				case "yaml":
+				case "dockerfile":
+					commentPrefix = "#"
+					break
+				case "html":
+				case "xml":
+				case "markdown":
+					commentPrefix = "<!--"
+					commentSuffix = "-->"
+					break
+				case "css":
+				case "scss":
+				case "less":
+					commentPrefix = "/*"
+					commentSuffix = "*/"
+					break
+				case "sql":
+					commentPrefix = "--"
+					break
+			}
+
+			// Create the AI comment with the configured prefix
+			const aiCommentPrefix = this.config.commentPrefix
+			const fullComment = `${commentPrefix} ${aiCommentPrefix} ${command}${commentSuffix ? " " + commentSuffix : ""}`
+
+			// Insert the comment at the cursor position
+			const edit = new vscode.WorkspaceEdit()
+			const insertPosition = new vscode.Position(cursorPosition.line, line.text.length)
+
+			// If the line is not empty, add a newline before the comment
+			if (line.text.trim().length > 0) {
+				edit.insert(document.uri, insertPosition, `\n${fullComment}`)
+			} else {
+				// If the line is empty, just insert the comment with proper indentation
+				const indentation = line.text.match(/^\s*/)?.[0] || ""
+				edit.replace(document.uri, line.range, `${indentation}${fullComment}`)
+			}
+
+			// Apply the edit
+			const success = await vscode.workspace.applyEdit(edit)
+			if (!success) {
+				throw new Error("Failed to insert AI comment")
+			}
+
+			// Add this document to active files to ensure it's included in context
+			this.addToActiveFiles(document.uri)
+
+			// Save the document to trigger the watch mode processing
+			await document.save()
+
+			this.log(`Quick command processed successfully`)
+		} catch (error) {
+			this.log(`Error in processQuickCommand: ${error instanceof Error ? error.message : String(error)}`)
+			throw error
 		}
 	}
 

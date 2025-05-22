@@ -982,6 +982,7 @@ export class UnifiedDiffHandler {
 		const uniq: DiffEdit[] = []
 		const errors: string[] = []
 		let newContent = documentContent
+		const documentPath = vscode.workspace.asRelativePath(documentUri)
 
 		// Deduplicate edits
 		for (const { path: editPath, hunk } of edits) {
@@ -990,13 +991,22 @@ export class UnifiedDiffHandler {
 				continue
 			}
 
-			const key = editPath + "\n" + normalizedHunk.join("")
+			// Handle special cases like "untitled" which should use the current document path
+			let finalPath = editPath
+			if (finalPath === "untitled" || finalPath === "/dev/null") {
+				finalPath = documentPath
+				console.log(
+					`[WatchMode DEBUG] Replacing placeholder filename with current document path: ${documentPath}`,
+				)
+			}
+
+			const key = finalPath + "\n" + normalizedHunk.join("")
 			if (seen.has(key)) {
 				continue
 			}
 			seen.add(key)
 
-			uniq.push({ path: editPath, hunk: normalizedHunk })
+			uniq.push({ path: finalPath, hunk: normalizedHunk })
 		}
 
 		console.log(`[WatchMode DEBUG] Processing ${uniq.length} unique edits`)
@@ -1293,7 +1303,6 @@ export const applySearchReplaceEdits = async (
 	}
 }
 
-
 /**
  * Maximum number of reflection attempts for failed edits
  */
@@ -1405,16 +1414,29 @@ export const processAIResponse = async (
 			console.log("[WatchMode DEBUG] SEARCH/REPLACE edits failed, trying unified diff")
 
 			// Convert the edits to the old format
-			const oldFormatEdits = parsedResponse.edits.map((edit) => ({
-				path: edit.filePath,
-				hunk: edit.blocks.flatMap((block) =>
-					block.content
-						.split("\n")
-						.map((line) =>
-							block.type === "SEARCH" ? " " + line : block.type === "REPLACE" ? "+" + line : line,
-						),
-				),
-			}))
+			const oldFormatEdits = parsedResponse.edits.map((edit) => {
+				// Fix the file path if it doesn't match the current document
+				// This handles cases where the AI uses "untitled" or other incorrect paths
+				const documentPath = vscode.workspace.asRelativePath(document.uri)
+				const editPath = edit.filePath
+
+				// If the edit path is "untitled" or doesn't exist in the workspace, use the current document path
+				const finalPath =
+					editPath === "untitled" || editPath.includes("/dev/null") ? documentPath : edit.filePath
+
+				console.log(`[WatchMode DEBUG] Mapping file path: ${editPath} -> ${finalPath}`)
+
+				return {
+					path: finalPath,
+					hunk: edit.blocks.flatMap((block) =>
+						block.content
+							.split("\n")
+							.map((line) =>
+								block.type === "SEARCH" ? " " + line : block.type === "REPLACE" ? "+" + line : line,
+							),
+					),
+				}
+			})
 
 			const diffHandler = new UnifiedDiffHandler()
 			const documentContent = document.getText()

@@ -262,6 +262,59 @@ const getCommandsMap = ({ context, outputChannel, watchModeService }: RegisterCo
 				vscode.window.showErrorMessage("Failed to restart Watch Mode service")
 			}
 		},
+		"kilo-code.watchMode.quickCommand": async () => {
+			if (!watchModeService) {
+				outputChannel.appendLine("Watch Mode service not initialized")
+				vscode.window.showErrorMessage("Watch Mode service not initialized")
+				return
+			}
+
+			// Check if watch mode is enabled
+			if (!watchModeService.isActive) {
+				const enableWatchMode = await vscode.window.showQuickPick(["Yes", "No"], {
+					placeHolder: "Watch Mode is not active. Would you like to enable it?",
+				})
+
+				if (enableWatchMode === "Yes") {
+					const success = watchModeService.start()
+					if (!success) {
+						vscode.window.showErrorMessage("Failed to enable Watch Mode")
+						return
+					}
+				} else {
+					return
+				}
+			}
+
+			// Show input box for the command
+			const input = await vscode.window.showInputBox({
+				prompt: "Speak your command...",
+				placeHolder: "e.g., fix the bug in this function, add error handling, refactor this code",
+				ignoreFocusOut: true,
+			})
+
+			if (input === undefined || input.trim() === "") {
+				// User cancelled or entered empty string
+				return
+			}
+
+			// Get the active text editor
+			const activeEditor = vscode.window.activeTextEditor
+			if (!activeEditor) {
+				vscode.window.showErrorMessage("No active text editor found")
+				return
+			}
+
+			// Process the quick command
+			try {
+				await watchModeService.processQuickCommand(activeEditor.document, input.trim())
+			} catch (error) {
+				outputChannel.appendLine(`Error processing quick command: ${error}`)
+				vscode.window.showErrorMessage(
+					`Failed to process command: ${error instanceof Error ? error.message : String(error)}`,
+				)
+			}
+		},
 	}
 }
 

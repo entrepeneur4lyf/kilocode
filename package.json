@@ -218,6 +218,12 @@
 				"icon": "$(eye)"
 			},
 			{
+				"command": "kilo-code.watchMode.quickCommand",
+				"title": "Quick Command",
+				"category": "Kilo Code",
+				"icon": "$(comment)"
+			},
+			{
 				"command": "kilo-code.newTask",
 				"title": "%command.newTask.title%",
 				"category": "%configuration.title%"
@@ -271,6 +277,12 @@
 				"key": "ctrl+shift+k",
 				"mac": "cmd+shift+k",
 				"when": "true"
+			},
+			{
+				"command": "kilo-code.watchMode.quickCommand",
+				"key": "ctrl+shift+m",
+				"mac": "cmd+shift+m",
+				"when": "editorTextFocus"
 			}
 		],
 		"menus": {
