@@ -21,14 +21,10 @@ export function generateAutocompleteSnippets(
 	options: PromptOptions, // Changed type to PromptOptions
 	currentFilepath: string,
 ): AutocompleteSnippet[] {
-	const snippets: AutocompleteSnippet[] = []
-
-	const contextSnippets = generateImportSnippets(codeContext.imports, options.includeImports, currentFilepath)
-	snippets.push(...contextSnippets)
-
-	const definitionSnippets = generateDefinitionSnippets(codeContext.definitions, options.includeDefinitions)
-	snippets.push(...definitionSnippets)
-	return snippets
+	return [
+		...generateImportSnippets(codeContext.imports, options.includeImports, currentFilepath),
+		...generateDefinitionSnippets(codeContext.definitions, options.includeDefinitions),
+	]
 }
 
 function generateImportSnippets(
