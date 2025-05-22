@@ -379,6 +379,8 @@ type ClineMessage = {
 				| "browser_action_launch"
 				| "use_mcp_server"
 				| "payment_required_prompt"
+				| "report_bug"
+				| "condense"
 		  )
 		| undefined
 	say?:
@@ -459,6 +461,8 @@ type RooCodeEvents = {
 							| "browser_action_launch"
 							| "use_mcp_server"
 							| "payment_required_prompt"
+							| "report_bug"
+							| "condense"
 					  )
 					| undefined
 				say?:
@@ -562,6 +566,8 @@ type RooCodeEvents = {
 			| "new_task"
 			| "fetch_instructions"
 			| "new_rule"
+			| "report_bug"
+			| "condense"
 		),
 		string,
 	]
@@ -945,6 +951,8 @@ type IpcMessage =
 												| "browser_action_launch"
 												| "use_mcp_server"
 												| "payment_required_prompt"
+												| "report_bug"
+												| "condense"
 										  )
 										| undefined
 									say?:
@@ -1422,6 +1430,8 @@ type TaskEvent =
 									| "browser_action_launch"
 									| "use_mcp_server"
 									| "payment_required_prompt"
+									| "report_bug"
+									| "condense"
 							  )
 							| undefined
 						say?:

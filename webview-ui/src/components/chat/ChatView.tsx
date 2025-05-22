@@ -286,6 +286,24 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 							setSecondaryButtonText(undefined)
 							setDidClickCancel(false)
 							break
+						// kilocode_change begin
+						case "report_bug":
+							if (!isPartial) {
+								playSound("notification")
+							}
+							setSendingDisabled(isPartial)
+							setClineAsk("report_bug")
+							setEnableButtons(!isPartial)
+							setPrimaryButtonText(t("chat:reportBug.title"))
+							break
+						case "condense":
+							setSendingDisabled(isPartial)
+							setClineAsk("condense")
+							setEnableButtons(!isPartial)
+							setPrimaryButtonText(t("kilocode:chat.condense.condenseConversation"))
+							setSecondaryButtonText(undefined)
+							break
+						// kilocode_change end
 					}
 					break
 				case "say":
@@ -412,8 +430,19 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 						case "resume_task":
 						case "resume_completed_task":
 						case "mistake_limit_reached":
+						case "report_bug":
 							vscode.postMessage({ type: "askResponse", askResponse: "messageResponse", text, images })
 							break
+						// kilocode_change start
+						case "condense":
+							vscode.postMessage({
+								type: "askResponse",
+								askResponse: "messageResponse",
+								text,
+								images,
+							})
+							break
+						// kilocode_change end
 						// There is no other case that a textfield should be enabled.
 					}
 				}
@@ -456,6 +485,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 				case "use_mcp_server":
 				case "resume_task":
 				case "mistake_limit_reached":
+				case "report_bug":
 					// Only send text/images if they exist
 					if (trimmedInput || (images && images.length > 0)) {
 						vscode.postMessage({
@@ -479,13 +509,21 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 				case "command_output":
 					vscode.postMessage({ type: "terminalOperation", terminalOperation: "continue" })
 					break
+				// kilocode_change start
+				case "condense":
+					vscode.postMessage({
+						type: "condense",
+						text: lastMessage?.text,
+					})
+					break
+				// kilocode_change end
 			}
 
 			setSendingDisabled(true)
 			setClineAsk(undefined)
 			setEnableButtons(false)
 		},
-		[clineAsk, startNewTask],
+		[clineAsk, startNewTask, lastMessage?.text], // kilocode_change: add lastMessage?.text
 	)
 
 	const handleSecondaryButtonClick = useCallback(

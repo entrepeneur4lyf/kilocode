@@ -19,6 +19,15 @@
 			"mcp": "MCP-Server"
 		}
 	},
+	"chat": {
+		"condense": {
+			"wantsToCondense": "Kilo Code möchte deine Unterhaltung zusammenfassen",
+			"condenseConversation": "Unterhaltung zusammenfassen"
+		}
+	},
+	"newTaskPreview": {
+		"task": "Aufgabe"
+	},
 	"autocompleteApiConfig": {
 		"title": "Autovervollständigung-API-Konfiguration",
 		"description": "Konfiguriere, welche API-Konfiguration für die Autovervollständigungsfunktion verwendet werden soll.",

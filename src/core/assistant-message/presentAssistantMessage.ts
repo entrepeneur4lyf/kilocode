@@ -31,6 +31,8 @@ import { formatResponse } from "../prompts/responses"
 import { validateToolUse } from "../tools/validateToolUse"
 import { Task } from "../task/Task"
 import { newRuleTool } from "../tools/newRuleTool"
+import { reportBugTool } from "../tools/reportBugTool" // kilocode_change
+import { condenseTool } from "../tools/condenseTool" // kilocode_change
 
 /**
  * Processes and presents assistant message content to the user interface.
@@ -193,6 +195,10 @@ export async function presentAssistantMessage(cline: Task) {
 					// kilocode_change start
 					case "new_rule":
 						return `[${block.name} for '${block.params.path}']`
+					case "report_bug":
+						return `[${block.name}]`
+					case "condense":
+						return `[${block.name}]`
 					// kilocode_change end
 				}
 			}
@@ -469,8 +475,15 @@ export async function presentAssistantMessage(cline: Task) {
 				case "new_rule":
 					await newRuleTool(cline, block, askApproval, handleError, pushToolResult, removeClosingTag)
 					break
+				case "report_bug":
+					await reportBugTool(cline, block, askApproval, handleError, pushToolResult, removeClosingTag)
+					break
+				case "condense":
+					await condenseTool(cline, block, askApproval, handleError, pushToolResult, removeClosingTag)
+					break
 				// kilocode_change end
 			}
+			// kilocode_change end
 
 			break
 	}

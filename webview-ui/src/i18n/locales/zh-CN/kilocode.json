@@ -19,6 +19,15 @@
 			"mcp": "MCP 服务器"
 		}
 	},
+	"chat": {
+		"condense": {
+			"wantsToCondense": "Kilo Code 想要压缩你的对话",
+			"condenseConversation": "压缩对话"
+		}
+	},
+	"newTaskPreview": {
+		"task": "任务"
+	},
 	"autocompleteApiConfig": {
 		"title": "自动完成API配置",
 		"description": "配置用于自动完成功能的API设置。",

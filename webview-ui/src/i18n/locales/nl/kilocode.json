@@ -19,6 +19,15 @@
 			"mcp": "MCP-servers"
 		}
 	},
+	"chat": {
+		"condense": {
+			"wantsToCondense": "Kilo Code wil je gesprek samenvatten",
+			"condenseConversation": "Gesprek samenvatten"
+		}
+	},
+	"newTaskPreview": {
+		"task": "Taak"
+	},
 	"autocompleteApiConfig": {
 		"title": "Automatisch aanvullen API-configuratie",
 		"description": "Configureer welke API-configuratie moet worden gebruikt voor de functionaliteit voor automatisch aanvullen.",
