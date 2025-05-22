@@ -59,8 +59,6 @@ export function renderPrompt({
 
 	const { template, compilePrefixSuffix, completionOptions } = getTemplate(helper)
 
-	// const snippets = undefined //TODO: get snippets here somehow. // This line is now replaced by the parameter
-
 	// Some models have prompts that need two passes. This lets us pass the compiled prefix/suffix
 	// into either the 2nd template to generate a raw string, or to pass prefix, suffix to a FIM endpoint
 	if (compilePrefixSuffix) {
