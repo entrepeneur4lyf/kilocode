@@ -596,9 +596,7 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 						if (this.pendingEditor && this.pendingEditor.document === document) {
 							// If first line is complete, update state based on current completion
 							if (firstLineComplete) {
-								if (this.hasAcceptedFirstLine) {
-									// If first line was accepted, update remaining lines
-								} else {
+								if (!this.hasAcceptedFirstLine) {
 									// Otherwise, still store just the first line
 									this.firstLinePreview = currentFirstLine
 								}
