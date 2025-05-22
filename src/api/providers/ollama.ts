@@ -2,7 +2,7 @@ import { Anthropic } from "@anthropic-ai/sdk"
 import OpenAI from "openai"
 import axios from "axios"
 
-import { SingleCompletionHandler, CompletionStreamParams } from "../index" // AIDIFF: Import CompletionStreamParams
+import { SingleCompletionHandler } from "../"
 import { ApiHandlerOptions, ModelInfo, openAiModelInfoSaneDefaults } from "../../shared/api"
 import { convertToOpenAiMessages } from "../transform/openai-format"
 import { convertToR1Format } from "../transform/r1-format"
@@ -57,43 +57,6 @@ export class OllamaHandler extends BaseProvider implements SingleCompletionHandl
 		}
 		for (const chunk of matcher.final()) {
 			yield chunk
-		}
-	}
-
-	// AIDIFF: Implement getCompletionStream for AutocompleteProvider
-	async *getCompletionStream(params: CompletionStreamParams, abortSignal: AbortSignal): ApiStream {
-		// Ollama's OpenAI-compatible endpoint for completions might expect a messages array
-		// even for "completions" like API. If it supports a raw prompt, this can be simplified.
-		// For now, wrapping the prompt as a user message.
-		// Alternatively, if Ollama /v1/completions is preferred, the client setup or call needs adjustment.
-		// Assuming this.client.chat.completions.create is the intended path for now.
-		// If a dedicated /v1/completions endpoint is better, this.client.completions.create should be used.
-		// Let's try with `this.client.completions.create` which is more standard for raw prompts.
-
-		const requestOptions: OpenAI.CompletionCreateParamsStreaming = {
-			model: params.modelId, // Use modelId from params
-			prompt: params.prompt,
-			temperature: params.temperature ?? this.options.modelTemperature ?? 0.1, // Default to 0.1 if not set
-			stream: true,
-			stop: params.stop,
-			// Ollama might not support systemPrompt directly in /v1/completions.
-			// If params.systemPrompt is provided and needs to be used,
-			// the prompt itself might need to be formatted to include it,
-			// or switch to chat.completions if that's more appropriate for Ollama.
-		}
-
-		// Pass the abortSignal to the OpenAI client call
-		const stream = await this.client.completions.create(requestOptions, { signal: abortSignal })
-
-		for await (const chunk of stream) {
-			if (abortSignal.aborted) {
-				// AIDIFF: Corrected property name to 'aborted'
-				break
-			}
-			const text = chunk.choices[0]?.text
-			if (text) {
-				yield { type: "text", text }
-			}
 		}
 	}
 
