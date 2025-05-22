@@ -167,17 +167,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 	// Dependencies
 	const deps = { apiHandler, cache, config, contextGatherer, promptRenderer }
 
-	// Helpers
-	const helpers = {
-		clearAutocompletePreview,
-		showStreamingIndicator,
-		cleanMarkdownCodeBlocks,
-		isFileDisabled,
-		validateCompletionContext,
-		loadingDecorationType,
-		streamingDecorationType,
-	}
-
 	// Inline completion provider disposable
 	let inlineCompletionProviderDisposable: vscode.Disposable | null = null
 
@@ -212,7 +201,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 
 		// Function to split completion into first line and remaining lines
 		const splitCompletion = (text: string): { firstLine: string; remainingLines: string } => {
-			const cleanedText = helpers.cleanMarkdownCodeBlocks(text)
+			const cleanedText = cleanMarkdownCodeBlocks(text)
 			const lines = cleanedText.split("\n")
 
 			if (lines.length <= 1) {
@@ -237,7 +226,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		// Clear loading indicator when we start receiving content
 		if (editor) {
 			isLoadingCompletion = false
-			editor.setDecorations(helpers.loadingDecorationType, [])
+			editor.setDecorations(loadingDecorationType, [])
 			// Keep the streaming indicator visible while content is streaming
 		}
 
@@ -293,7 +282,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 								remainingLinesPreview = currentRemainingLines
 							} else {
 								// If first line isn't complete yet, store everything
-								const cleanedText = helpers.cleanMarkdownCodeBlocks(completion)
+								const cleanedText = cleanMarkdownCodeBlocks(completion)
 								firstLinePreview = cleanedText
 								remainingLinesPreview = ""
 							}
@@ -311,7 +300,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 
 		// Clear streaming indicator when streaming is complete
 		if (editor) {
-			editor.setDecorations(helpers.streamingDecorationType, [])
+			editor.setDecorations(streamingDecorationType, [])
 		}
 
 		// Clean up any pending throttle timeout
@@ -342,7 +331,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		// Show streaming indicator while generating completion
 		const editor = vscode.window.activeTextEditor
 		if (editor && editor.document === document) {
-			helpers.showStreamingIndicator(editor)
+			showStreamingIndicator(editor)
 		}
 		// Generate a unique ID for this completion
 		const completionId = crypto.randomUUID()
@@ -418,14 +407,14 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 				isLoadingCompletion,
 			}
 			if (editor && previewState.isLoadingCompletion) {
-				editor.setDecorations(helpers.loadingDecorationType, [])
+				editor.setDecorations(loadingDecorationType, [])
 				isLoadingCompletion = false
 			}
 			return null
 		}
 
 		// Validate completion against selection context
-		if (!helpers.validateCompletionContext(context, document, position)) {
+		if (!validateCompletionContext(context, document, position)) {
 			// Make sure to clear the loading indicator if validation fails
 			const editor = vscode.window.activeTextEditor
 			const previewState = {
@@ -436,13 +425,13 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 				isLoadingCompletion,
 			}
 			if (editor && previewState.isLoadingCompletion) {
-				editor.setDecorations(helpers.loadingDecorationType, [])
+				editor.setDecorations(loadingDecorationType, [])
 				isLoadingCompletion = false
 			}
 			return null
 		}
 
-		return helpers.cleanMarkdownCodeBlocks(result.completion)
+		return cleanMarkdownCodeBlocks(result.completion)
 	}
 
 	const provideInlineCompletionItems = async (
@@ -452,7 +441,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		token: vscode.CancellationToken,
 	): Promise<vscode.InlineCompletionItem[] | vscode.InlineCompletionList | null> => {
 		// Don't provide completions if disabled
-		if (!enabled || helpers.isFileDisabled(document)) {
+		if (!enabled || isFileDisabled(document)) {
 			return null
 		}
 
@@ -550,16 +539,16 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 					}
 					// Clear loading indicator when cursor moves
 					if (previewState.isLoadingCompletion) {
-						helpers.clearAutocompletePreview()
+						clearAutocompletePreview()
 					}
 
 					// Always hide the streaming decorator when cursor moves
-					e.textEditor.setDecorations(helpers.streamingDecorationType, [])
+					e.textEditor.setDecorations(streamingDecorationType, [])
 
 					// If we've accepted the first line and cursor moves, reset state
 					// This prevents showing remaining lines if user moves cursor after accepting first line
 					if (previewState.hasAcceptedFirstLine && e.kind !== vscode.TextEditorSelectionChangeKind.Command) {
-						helpers.clearAutocompletePreview()
+						clearAutocompletePreview()
 					}
 				}
 			}),
@@ -575,12 +564,12 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 					isLoadingCompletion,
 				}
 				if (previewState.isLoadingCompletion) {
-					helpers.clearAutocompletePreview()
+					clearAutocompletePreview()
 				} else {
 					const editor = vscode.window.activeTextEditor
 					if (editor && editor.document === e.document) {
-						editor.setDecorations(helpers.loadingDecorationType, [])
-						editor.setDecorations(helpers.streamingDecorationType, [])
+						editor.setDecorations(loadingDecorationType, [])
+						editor.setDecorations(streamingDecorationType, [])
 					}
 				}
 			}),
@@ -624,19 +613,19 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 				})
 
 				// Reset state
-				helpers.clearAutocompletePreview()
+				clearAutocompletePreview()
 			} else {
 				// For single line completion or when remainingLinesPreview is empty after first line acceptance
 				// We need to ensure the full preview (which might be just the firstLinePreview if it was a single line)
 				// is inserted if it hasn't been fully by VS Code's default commit.
 				// However, the default commit (`editor.action.inlineSuggest.commit`) should handle this.
 				// So, just clearing our state should be enough.
-				helpers.clearAutocompletePreview()
+				clearAutocompletePreview()
 			}
 		})
 
 		const dismissCommand = vscode.commands.registerCommand("kilo-code.dismissAutocompletePreview", () => {
-			helpers.clearAutocompletePreview()
+			clearAutocompletePreview()
 		})
 
 		context.subscriptions.push(acceptCommand, dismissCommand)
@@ -647,7 +636,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 	 */
 	const dispose = () => {
 		if (isShowingAutocompletePreview) {
-			helpers.clearAutocompletePreview()
+			clearAutocompletePreview()
 		}
 
 		// Dispose of the inline completion provider
@@ -657,8 +646,8 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		}
 
 		// Dispose of the decorator types
-		helpers.loadingDecorationType.dispose()
-		helpers.streamingDecorationType.dispose()
+		loadingDecorationType.dispose()
+		streamingDecorationType.dispose()
 	}
 
 	const register = (context: vscode.ExtensionContext): vscode.Disposable => {
