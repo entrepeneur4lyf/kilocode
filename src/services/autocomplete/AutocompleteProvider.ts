@@ -598,7 +598,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, false)
 	}
 
-	const register = (context: vscode.ExtensionContext): vscode.Disposable => {
+	const register = (context: vscode.ExtensionContext) => {
 		inlineCompletionProviderDisposable = vscode.languages.registerInlineCompletionItemProvider(
 			{ pattern: "**" }, // All files
 			{ provideInlineCompletionItems: (...args) => provideInlineCompletionItems(...args) },
@@ -621,19 +621,11 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		const statusBarItem = registerStatusBarItem(context)
 		registerConfigurationWatcher(context)
 		registerToggleCommand(context, statusBarItem)
-
-		return {
-			dispose: () => dispose(),
-		}
 	}
 
 	// Main provider implementation
-	const disposable = register(context)
+	register(context)
 
 	// Subscribe to cleanup
-	context.subscriptions.push({
-		dispose: () => {
-			disposable.dispose()
-		},
-	})
+	context.subscriptions.push({ dispose })
 }
