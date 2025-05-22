@@ -1,9 +1,12 @@
 //PLANREF: continue/extensions/vscode/src/VsCodeIde.ts
 //PLANREF: continue/extensions/vscode/src/util/ideUtils.ts
-import { Range, RangeInFile, Location } from "../ide-types"
+// AIDIFF: Imported IdeInfo for the getIdeInfo method.
+import { Range, RangeInFile, Location, IdeInfo } from "../ide-types"
 
 export interface IDE {
-	// getIdeInfo(): Promise<IdeInfo>
+	// AIDIFF: Uncommented getIdeInfo as it's essential for providing IDE context.
+	// PLANREF: continue/core/index.d.ts (IDE.getIdeInfo)
+	getIdeInfo(): Promise<IdeInfo>
 	// getIdeSettings(): Promise<IdeSettings>
 	getDiff(includeUnstaged: boolean): Promise<string[]>
 	getClipboardContent(): Promise<{ text: string; copiedAt: string }>
@@ -24,15 +27,19 @@ export interface IDE {
 	readFile(fileUri: string): Promise<string>
 	readRangeInFile(fileUri: string, range: Range): Promise<string>
 	// showLines(fileUri: string, startLine: number, endLine: number): Promise<void>
-	// getOpenFiles(): Promise<string[]>
-	// getCurrentFile(): Promise<
-	// 	| undefined
-	// 	| {
-	// 			isUntitled: boolean
-	// 			path: string
-	// 			contents: string
-	// 	  }
-	// >
+	// AIDIFF: Uncommented getOpenFiles to allow access to the list of open files.
+	// PLANREF: continue/core/index.d.ts (IDE.getOpenFiles)
+	getOpenFiles(): Promise<string[]>
+	// AIDIFF: Uncommented getCurrentFile to retrieve information about the currently active file.
+	// PLANREF: continue/core/index.d.ts (IDE.getCurrentFile)
+	getCurrentFile(): Promise<
+		| undefined
+		| {
+				isUntitled: boolean
+				path: string
+				contents: string
+		  }
+	>
 	getLastFileSaveTimestamp?(): number
 	// updateLastFileSaveTimestamp?(): void
 	// getPinnedFiles(): Promise<string[]>

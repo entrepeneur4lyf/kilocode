@@ -51,10 +51,12 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		this.cache = new CompletionCache()
 		this.config = new AutocompleteConfig()
 		this.contextGatherer = new ContextGatherer()
+		// AIDIFF: Instantiate PromptRenderer with empty options and default model.
+		// PromptRenderer's constructor handles partial options.
 		this.promptRenderer = new PromptRenderer({}, DEFAULT_OLLAMA_MODEL)
 
 		this.apiHandler = buildApiHandler({
-			apiProvider: "ollama",
+			apiProvider: "ollama", // TODO: This should ideally come from config too
 			ollamaModelId: DEFAULT_OLLAMA_MODEL,
 			ollamaBaseUrl: DEFAULT_OLLAMA_URL,
 		})
@@ -68,7 +70,6 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 			rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen,
 		})
 
-		// Create a new decorator specifically for streaming completions
 		this.streamingDecorationType = vscode.window.createTextEditorDecorationType({
 			after: {
 				color: new vscode.ThemeColor("editorGhostText.foreground"),
@@ -79,39 +80,25 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		})
 	}
 
-	/**
-	 * Register the autocomplete provider with VSCode
-	 */
 	register(context: vscode.ExtensionContext): vscode.Disposable {
-		// Register the inline completion provider
 		this.inlineCompletionProviderDisposable = vscode.languages.registerInlineCompletionItemProvider(
 			{ pattern: "**" }, // All files
 			this,
 		)
 		context.subscriptions.push(this.inlineCompletionProviderDisposable)
-
-		// Register event handlers for preview text
 		this.registerTextEditorEvents(context)
-
-		// Register commands for accepting/dismissing preview
 		this.registerPreviewCommands(context)
 
-		// Register keybinding for Tab to accept completions
-		// This ensures our command runs when Tab is pressed with an inline suggestion visible
 		context.subscriptions.push(
 			vscode.commands.registerCommand("editor.action.inlineSuggest.commit", async () => {
-				// If we have an active completion, handle it with our custom logic
 				if (this.isShowingAutocompletePreview) {
 					await vscode.commands.executeCommand("kilo-code.acceptAutocompletePreview")
 					return
 				}
-
-				// Otherwise, let VS Code handle it normally
 				await vscode.commands.executeCommand("default:editor.action.inlineSuggest.commit")
 			}),
 		)
 
-		// Register UI components and event handlers
 		const statusBarItem = this.registerStatusBarItem(context)
 		this.registerConfigurationWatcher(context)
 		this.registerToggleCommand(context, statusBarItem)
@@ -121,9 +108,6 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		}
 	}
 
-	/**
-	 * Implementation of InlineCompletionItemProvider.provideInlineCompletionItems
-	 */
 	async provideInlineCompletionItems(
 		document: vscode.TextDocument,
 		position: vscode.Position,
@@ -136,18 +120,11 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		}
 
 		try {
-			// If we've already accepted the first line, show the remaining lines
 			if (this.hasAcceptedFirstLine && this.remainingLinesPreview) {
 				const item = new vscode.InlineCompletionItem(this.remainingLinesPreview)
-				// Set command to ensure VS Code knows this is a completion that can be accepted with Tab
 				item.command = { command: "editor.action.inlineSuggest.commit", title: "Accept Completion" }
-
-				// Mark that we're showing a preview
 				this.isShowingAutocompletePreview = true
-
-				// Set context for keybindings
 				vscode.commands.executeCommand("setContext", this.autocompletePreviewVisibleContextKey, true)
-
 				return [item]
 			}
 
@@ -175,11 +152,7 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 
 			// Set command to ensure VS Code knows this is a completion that can be accepted with Tab
 			item.command = { command: "editor.action.inlineSuggest.commit", title: "Accept Completion" }
-
-			// Mark that we're showing a preview
 			this.isShowingAutocompletePreview = true
-
-			// Set context for keybindings
 			vscode.commands.executeCommand("setContext", this.autocompletePreviewVisibleContextKey, true)
 
 			return [item]
@@ -202,9 +175,6 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		return statusBarItem
 	}
 
-	/**
-	 * Register configuration change watcher
-	 */
 	private registerConfigurationWatcher(context: vscode.ExtensionContext): void {
 		context.subscriptions.push(
 			vscode.workspace.onDidChangeConfiguration((e) => {
@@ -216,9 +186,6 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		)
 	}
 
-	/**
-	 * Register command to toggle autocomplete
-	 */
 	private registerToggleCommand(context: vscode.ExtensionContext, statusBarItem: vscode.StatusBarItem): void {
 		context.subscriptions.push(
 			vscode.commands.registerCommand("kilo-code.toggleAutocomplete", () => {
@@ -229,9 +196,6 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		)
 	}
 
-	/**
-	 * Register editor event handlers for tracking cursor position and document changes
-	 */
 	private registerTextEditorEvents(context: vscode.ExtensionContext): void {
 		context.subscriptions.push(
 			vscode.window.onDidChangeTextEditorSelection((e) => {
@@ -253,27 +217,22 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 			}),
 		)
 
-		// Register document change event
 		context.subscriptions.push(
 			vscode.workspace.onDidChangeTextDocument((e) => {
 				if (this.isLoadingCompletion) {
 					this.clearAutocompletePreview()
-				}
-
-				// Hide streaming decorator when document changes
-				const editor = vscode.window.activeTextEditor
-				if (editor && editor.document === e.document) {
-					editor.setDecorations(this.streamingDecorationType, [])
+				} else {
+					const editor = vscode.window.activeTextEditor
+					if (editor && editor.document === e.document) {
+						editor.setDecorations(this.loadingDecorationType, [])
+						editor.setDecorations(this.streamingDecorationType, [])
+					}
 				}
 			}),
 		)
 	}
 
-	/**
-	 * Register commands for accepting and dismissing preview text
-	 */
 	private registerPreviewCommands(context: vscode.ExtensionContext): void {
-		// Accept command
 		const acceptCommand = vscode.commands.registerCommand("kilo-code.acceptAutocompletePreview", async () => {
 			const editor = vscode.window.activeTextEditor
 			if (!editor) return
@@ -309,7 +268,6 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 			}
 		})
 
-		// Dismiss command
 		const dismissCommand = vscode.commands.registerCommand("kilo-code.dismissAutocompletePreview", () => {
 			this.clearAutocompletePreview()
 		})
@@ -317,9 +275,6 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		context.subscriptions.push(acceptCommand, dismissCommand)
 	}
 
-	/**
-	 * Shows the loading indicator at the current cursor position
-	 */
 	/**
 	 * Shows the loading indicator at the current cursor position
 	 */
@@ -335,7 +290,6 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		const decoration: vscode.DecorationOptions = {
 			range: new vscode.Range(position, position),
 		}
-
 		editor.setDecorations(this.loadingDecorationType, [decoration])
 	}
 
@@ -348,7 +302,6 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		const decoration: vscode.DecorationOptions = {
 			range: new vscode.Range(position, position),
 		}
-
 		editor.setDecorations(this.streamingDecorationType, [decoration])
 	}
 
@@ -465,7 +418,7 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		})
 
 		// Process the completion stream
-		const result = await this.processCompletionStream(systemPrompt, prompt, completionId, document)
+		const result = await this.processCompletionStream(systemPrompt, prompt.prompt, completionId, document)
 
 		if (result.isCancelled || token.isCancellationRequested) {
 			// Make sure to clear the loading indicator if the completion is cancelled

@@ -1,8 +1,9 @@
-//PLANREF: continue/core/autocomplete/templating/index.ts
-import { AutocompleteLanguageInfo } from "../AutocompleteLanguageInfo"
-import { CompletionOptions } from "../types"
+// AIDIFF: Aligned with continue/core/autocomplete/templating/getStopTokens.ts
+// PLANREF: continue/core/autocomplete/templating/getStopTokens.ts
+import { AutocompleteLanguageInfo } from "../AutocompleteLanguageInfo" // AIDIFF: Path kept as is, type is compatible
+import { CompletionOptions } from "../types" // AIDIFF: Path kept as is, type is compatible
 
-const _DOUBLE_NEWLINE = "\n\n"
+const _DOUBLE_NEWLINE = "\n\n" // AIDIFF: continue/ does not use this, but kept for potential future use.
 const _WINDOWS_DOUBLE_NEWLINE = "\r\n\r\n"
 // TODO: Do we want to stop completions when reaching a `/src/` string?
 const SRC_DIRECTORY = "/src/"

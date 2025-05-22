@@ -1,5 +1,5 @@
 //PLANREF: continue/core/autocomplete/templating/index.ts
-import Handlebars from "handlebars";
+import Handlebars from "handlebars"
 
 import { AutocompleteLanguageInfo } from "../AutocompleteLanguageInfo"
 
@@ -33,14 +33,6 @@ function renderStringTemplate(
 		language: lang.name,
 	})
 }
-
-function fibonacci(n: number): number {
-    if (n <= 1) {
-        return n;
-    }
-    return fibonacci(n - 1) + fibonacci(n - 2);
-}
-
 
 export function renderPrompt({ workspaceDirs, helper }: { workspaceDirs: string[]; helper: HelperVars }): {
 	prompt: string
