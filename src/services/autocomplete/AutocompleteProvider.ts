@@ -274,7 +274,7 @@ interface AutocompleteProviderHelpers {
 	streamingDecorationType: vscode.TextEditorDecorationType
 }
 
-class AutocompleteProvider implements vscode.InlineCompletionItemProvider {
+class AutocompleteProvider {
 	private inlineCompletionProviderDisposable: vscode.Disposable | null = null
 
 	constructor(
@@ -286,7 +286,7 @@ class AutocompleteProvider implements vscode.InlineCompletionItemProvider {
 	register(context: vscode.ExtensionContext): vscode.Disposable {
 		this.inlineCompletionProviderDisposable = vscode.languages.registerInlineCompletionItemProvider(
 			{ pattern: "**" }, // All files
-			this,
+			{ provideInlineCompletionItems: (...args) => this.provideInlineCompletionItems(...args) },
 		)
 		context.subscriptions.push(this.inlineCompletionProviderDisposable)
 		this.registerTextEditorEvents(context)
