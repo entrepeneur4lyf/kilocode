@@ -26,7 +26,7 @@ interface DebugSession {
  * Generates a unique ID for a debug session
  */
 function generateDebugId(): string {
-	return crypto.randomBytes(4).toString("hex") + "_" + Date.now().toString()
+	return Date.now().toString()
 }
 
 /**
@@ -63,7 +63,7 @@ function writeDebugFile(filename: string, content: string, directory: string): v
 		if (err) {
 			console.error(`Error writing debug file ${filename}:`, err)
 		} else {
-			console.log(`Debug file written to ${filePath}`)
+			// console.log(`Debug file written to ${filePath}`)
 		}
 	})
 }
@@ -81,7 +81,7 @@ export function writePromptToDebugFile(systemPrompt: string, userPrompt: string)
 
 	try {
 		const session = createDebugSession()
-		const debugContent = `System Prompt:\n${systemPrompt}\n\nUser Prompt:\n${userPrompt}`
+		const debugContent = `System Prompt:\n${systemPrompt}\n\nUser Prompt:\n${userPrompt.replaceAll("\\n", "\n")}`
 		writeDebugFile("prompt.txt", debugContent, session.directory)
 
 		// Also write a metadata file with timestamp
