@@ -1,6 +1,21 @@
 import * as vscode from "vscode"
-import { AICommentData, CommentProcessingResult, CommentProcessorOptions } from "./types"
+import {
+	AICommentData,
+	CommentProcessingResult,
+	CommentProcessorOptions,
+	DiffBlock,
+	DiffEdit as NewDiffEdit,
+	AIResponse,
+	TriggerType,
+} from "./types"
 
+/**
+ * Interface for a diff edit
+ */
+export interface DiffEdit {
+	path: string
+	hunk: string[]
+}
 /**
  * Custom error for when search text is not unique in a file
  */
@@ -74,7 +89,6 @@ export interface DiffEdit {
 	path: string
 	hunk: string[]
 }
-
 /**
  * Extracts code context around the given position
  * @param content Full file content
@@ -89,23 +103,9 @@ const extractCodeContext = (
 ): string => {
 	const lines = content.split("\n")
 
-	// In tests, we need to handle the case where the mock Position objects are used
-	// Extract line numbers safely, defaulting to reasonable values if undefined
 	const startLine = typeof startPos.line === "number" ? Math.max(0, startPos.line - contextLines) : 0
 	const endLine =
 		typeof endPos.line === "number" ? Math.min(lines.length - 1, endPos.line + contextLines) : lines.length - 1
-
-	// For test debugging
-	console.log(`Extracting context from line ${startLine} to ${endLine}`)
-	console.log(`Content has ${lines.length} lines`)
-	console.log(`Start position: line ${startPos.line}, char ${startPos.character}`)
-	console.log(`End position: line ${endPos.line}, char ${endPos.character}`)
-
-	// Special case for tests: if we can't determine proper context, return the whole content
-	if (isNaN(startLine) || isNaN(endLine) || startLine > endLine) {
-		console.log("Using full content as context due to position issues")
-		return content
-	}
 
 	const extractedContext = lines.slice(startLine, endLine + 1).join("\n")
 	console.log(`Extracted context: ${extractedContext.substring(0, 100)}${extractedContext.length > 100 ? "..." : ""}`)
@@ -122,87 +122,43 @@ export const detectAIComments = (options: CommentProcessorOptions): CommentProce
 	const comments: AICommentData[] = []
 	const errors: Error[] = []
 
-	console.log(
-		`[WatchMode DEBUG] Detecting AI comments in file: ${fileUri.toString()}, content length: ${content.length}`,
-	)
-	console.log(`[WatchMode DEBUG] File language ID: ${options.languageId || "unknown"}`)
+	AI_COMMENT_PATTERNS.forEach((pattern) => {
+		let match
 
-	try {
-		AI_COMMENT_PATTERNS.forEach((pattern, index) => {
-			console.log(`[WatchMode DEBUG] Checking pattern #${index + 1}: ${pattern.toString()}`)
-			let match
-			let matchCount = 0
+		while ((match = pattern.exec(content)) !== null) {
+			// Get the full matched comment and the content capture group
+			const fullMatch = match[0]
+			const commentContent = match[1].trim()
 
-			while ((match = pattern.exec(content)) !== null) {
-				matchCount++
-				// Get the full matched comment and the content capture group
-				const fullMatch = match[0]
-				const commentContent = match[1].trim()
+			// Calculate the start and end positions in the document
+			const beforeMatch = content.substring(0, match.index)
+			const matchLines = beforeMatch.split("\n")
+			const startLine = matchLines.length - 1
+			const startChar = matchLines[startLine].length
 
-				console.log(`[WatchMode DEBUG] Match #${matchCount} for pattern #${index + 1}:`)
-				console.log(
-					`[WatchMode DEBUG] - Full match: "${fullMatch.substring(0, 50)}${fullMatch.length > 50 ? "..." : ""}"`,
-				)
-				console.log(
-					`[WatchMode DEBUG] - Comment content: "${commentContent.substring(0, 50)}${commentContent.length > 50 ? "..." : ""}"`,
-				)
-				console.log(`[WatchMode DEBUG] - Match index: ${match.index}`)
+			const matchEndIndex = match.index + fullMatch.length
+			const beforeEnd = content.substring(0, matchEndIndex)
+			const endLines = beforeEnd.split("\n")
+			const endLine = endLines.length - 1
+			const endChar = endLines[endLine].length
 
-				// Calculate the start and end positions in the document
-				const beforeMatch = content.substring(0, match.index)
-				const matchLines = beforeMatch.split("\n")
-				const startLine = matchLines.length - 1
-				const startChar = matchLines[startLine].length
+			// Create position objects using vscode.Position
+			const startPos = new vscode.Position(startLine, startChar)
+			const endPos = new vscode.Position(endLine, endChar)
 
-				const matchEndIndex = match.index + fullMatch.length
-				const beforeEnd = content.substring(0, matchEndIndex)
-				const endLines = beforeEnd.split("\n")
-				const endLine = endLines.length - 1
-				const endChar = endLines[endLine].length
+			// Extract surrounding code context
+			// Use a larger context to ensure we capture the function definition
+			const codeContext = extractCodeContext(content, startPos, endPos, 15)
 
-				console.log(`[WatchMode DEBUG] - Position: Line ${startLine}-${endLine}, Char ${startChar}-${endChar}`)
-
-				// Create position objects using vscode.Position
-				const startPos = new vscode.Position(startLine, startChar)
-				const endPos = new vscode.Position(endLine, endChar)
-
-				// Extract surrounding code context
-				// Use a larger context to ensure we capture the function definition
-				console.log(`[WatchMode DEBUG] Extracting code context...`)
-				const codeContext = extractCodeContext(content, startPos, endPos, 15)
-				console.log(`[WatchMode DEBUG] Code context length: ${codeContext.length} characters`)
-
-				console.log(
-					`[WatchMode DEBUG] Found AI comment: "${commentContent.substring(0, 50)}${commentContent.length > 50 ? "..." : ""}"`,
-				)
-
-				// Special handling for test case with "Refactor this function"
-				let finalContext = codeContext
-				if (commentContent.includes("Refactor this function")) {
-					console.log("[WatchMode DEBUG] Detected test case for 'Refactor this function'")
-					// Include the function definition in the context for the test case
-					finalContext = content
-					console.log("[WatchMode DEBUG] Using full content as context for refactor test case")
-				}
-
-				comments.push({
-					content: commentContent,
-					startPos,
-					endPos,
-					context: finalContext,
-					fileUri,
-				})
-				console.log(`[WatchMode DEBUG] Added comment to results array (total: ${comments.length})`)
-			}
-
-			console.log(`[WatchMode DEBUG] Pattern #${index + 1} found ${matchCount} matches`)
-		})
-	} catch (error) {
-		console.error(`Error detecting AI comments: ${error instanceof Error ? error.message : String(error)}`)
-		errors.push(error instanceof Error ? error : new Error(String(error)))
-	}
-
-	console.log(`Detection complete. Found ${comments.length} AI comments, ${errors.length} errors`)
+			comments.push({
+				content: commentContent,
+				startPos,
+				endPos,
+				context: codeContext,
+				fileUri,
+			})
+		}
+	})
 	return { comments, errors: errors.length > 0 ? errors : undefined }
 }
 
@@ -221,7 +177,27 @@ export const updateCurrentAICommentPrefix = (prefix: string): void => {
 	currentAICommentPrefix = prefix
 }
 
-export const buildAIPrompt = (commentData: AICommentData): string => {
+/**
+ * Determines the trigger type based on the comment content
+ * @param commentContent The content of the AI comment
+ * @returns The trigger type (Edit or Ask)
+ */
+export const determineTriggerType = (commentContent: string): TriggerType => {
+	// Check if the comment starts with a question mark or contains a question
+	if (commentContent.trim().startsWith("?") || commentContent.includes("ai?")) {
+		return TriggerType.Ask
+	}
+
+	// Default to Edit mode
+	return TriggerType.Edit
+}
+
+export const buildAIPrompt = (
+	commentData: AICommentData,
+	triggerType: TriggerType = TriggerType.Edit,
+	activeFiles: { uri: vscode.Uri; content: string }[] = [],
+): string => {
+	console.log("[WatchMode DEBUG] Building AI prompt")
 	const { content, context, fileUri } = commentData
 	const filePath = vscode.workspace.asRelativePath(fileUri)
 
@@ -230,8 +206,8 @@ export const buildAIPrompt = (commentData: AICommentData): string => {
 		? currentAICommentPrefix.slice(0, -1)
 		: currentAICommentPrefix
 
-	// Create a prompt that includes system message and instructions for unified diff format
-	return `
+	// Base prompt that's common to both edit and question modes
+	let prompt = `
 You are Kilo Code, a highly skilled software engineer with extensive knowledge in many programming languages, frameworks, design patterns, and best practices.
 
 # Task
@@ -242,40 +218,49 @@ I've written your instructions in comments in the code and marked them with "${d
 You can see the "${displayPrefix}" comments shown below.
 Find them in the code files I've shared with you, and follow their instructions.
 
-After completing those instructions, also BE SURE to remove all the "${displayPrefix}" comments from the code too.
-
 # Code to modify
 
 \`\`\`
 ${context || "No context available"}
 \`\`\`
+`
 
-Make changes to the code shown below using unified diff format.
+	// Add content from active files for additional context
+	if (activeFiles.length > 0) {
+		prompt += `\n\n# Additional context from open files\n\n`
 
+		for (const file of activeFiles) {
+			// For tests, compare paths instead of full URIs
+			const filePath = file.uri.path || file.uri.toString()
+			const commentPath = fileUri.path || fileUri.toString()
+
+			if (filePath !== commentPath) {
+				// Skip the file with the comment
+				const relativePath = vscode.workspace.asRelativePath(file.uri)
+				prompt += `## ${relativePath}\n\n\`\`\`\n${file.content}\n\`\`\`\n\n`
+			}
+		}
+	}
+
+	// Add mode-specific instructions
+	if (triggerType === TriggerType.Edit) {
+		prompt += `
 # Response format
 
-Respond with unified diff patches that I can apply to update the code.
+You MUST respond with SEARCH/REPLACE blocks for each edit. Format your changes as follows:
 
-1. Format your changes as unified diff format (like \`git diff\`):
-   - Start with \`--- ${filePath}\` and \`+++ ${filePath}\` header lines
-   - Include one or more hunks that start with \`@@ ... @@\` lines
-   - Use \`-\` lines to show deletions, \`+\` lines for additions
-   - Include sufficient unchanged context lines (with a leading space) to ensure the hunks match uniquely
+${filePath}
+<<<<<<< SEARCH
+exact original code
+=======
+replacement code
+>>>>>>> REPLACE
 
-2. If modifying multiple files, provide separate diffs for each file.
+You can include multiple SEARCH/REPLACE blocks for the same file, and you can edit multiple files.
+Make sure to include enough context in the SEARCH block to uniquely identify the code to replace.
+After completing the instructions, also BE SURE to remove all the "${displayPrefix}" comments from the code.
 
-3. Include necessary surrounding context:
-   - Make sure to include ENOUGH context lines so the changes can be uniquely located
-   - If there are multiple identical code sections, include more context to disambiguate
-   - Too little context may cause ambiguity, too much is better than too little
-
-4. CRITICAL: Make sure your diff can be applied cleanly:
-   - ALL lines you want to modify must be marked with \`-\`
-   - ALL new/replacement lines must be marked with \`+\`
-   - Don't skip blank lines, comments, or any other content!
-   - If you skip lines, the diff won't apply correctly
-
-Example format:
+You can also provide unified diff format if that's more appropriate for your changes:
 \`\`\`diff
 --- ${filePath}
 +++ ${filePath}
@@ -286,19 +271,168 @@ Example format:
  // Context line(s) after (unchanged, starts with space)
 \`\`\`
 
-If you need to explain your changes, please do so before or after the diff blocks.
+If you need to explain your changes, please do so before or after the code blocks.
+`
+	} else {
+		// Question mode
+		prompt += `
+# Response format
 
+Since this appears to be a question rather than a code edit request, please provide a detailed analysis or explanation.
+You don't need to modify any code - just answer the question thoroughly based on the code context provided.
 
-`.trim()
+If you do need to suggest code changes, you can include them as examples in your explanation using markdown code blocks.
+`
+	}
+
+	const finalPrompt = prompt.trim()
+
+	// Debug log the full prompt string
+	console.log("[WatchMode DEBUG] === FULL AI PROMPT ===")
+	console.log(finalPrompt)
+	console.log("[WatchMode DEBUG] === END AI PROMPT ===")
+
+	// More detailed debug logging of the prompt
+	console.debug(
+		"[WatchMode DEBUG] Full prompt string:",
+		JSON.stringify({
+			prompt: finalPrompt,
+			length: finalPrompt.length,
+			estimatedTokens: estimateTokenCount(finalPrompt),
+			triggerType: triggerType,
+			timestamp: new Date().toISOString(),
+		}),
+	)
+
+	return finalPrompt
+}
+
+/**
+ * Estimates the token count of a string
+ * This is a very rough estimate - about 4 characters per token
+ * @param text The text to estimate tokens for
+ * @returns Estimated token count
+ */
+export function estimateTokenCount(text: string): number {
+	return Math.ceil(text.length / 4)
+}
+
+/**
+ * Parses SEARCH/REPLACE blocks from the AI response
+ * @param response The AI response containing SEARCH/REPLACE blocks
+ * @returns An array of NewDiffEdit objects
+ */
+export function parseSearchReplaceBlocks(response: string): NewDiffEdit[] {
+	const edits: NewDiffEdit[] = []
+	const fileBlockRegex = /([^\s]+?)\n<<<<<<< SEARCH\n([\s\S]*?)=======\n([\s\S]*?)>>>>>>> REPLACE/g
+
+	let match
+	while ((match = fileBlockRegex.exec(response)) !== null) {
+		const filePath = match[1].trim()
+		const searchBlock = match[2]
+		const replaceBlock = match[3]
+
+		// Create a DiffEdit with DiffBlocks
+		const blocks: DiffBlock[] = [
+			{ type: "SEARCH", content: searchBlock },
+			{ type: "REPLACE", content: replaceBlock },
+		]
+
+		edits.push({
+			filePath,
+			blocks,
+		})
+	}
+
+	return edits
+}
+
+/**
+ * Parses the AI response to extract edits in either SEARCH/REPLACE or unified diff format
+ * @param response The AI response
+ * @param triggerType The trigger type (Edit or Ask)
+ * @returns An AIResponse object containing the edits and explanation
+ */
+export function parseAIResponse(response: string, triggerType: TriggerType): AIResponse {
+	console.log("[WatchMode DEBUG] Parsing AI response")
+	console.log("[WatchMode DEBUG] === FULL AI RESPONSE ===")
+	console.log(response)
+	console.log("[WatchMode DEBUG] === END AI RESPONSE ===")
+
+	// Debug log the full response string
+	console.debug(
+		"[WatchMode DEBUG] Full response string:",
+		JSON.stringify({
+			response: response,
+			length: response.length,
+			estimatedTokens: estimateTokenCount(response),
+			triggerType: triggerType,
+			timestamp: new Date().toISOString(),
+		}),
+	)
+
+	// Initialize the result
+	const result: AIResponse = {
+		edits: [],
+		explanation: "",
+		triggerType,
+	}
+
+	// If it's a question, just return the response as explanation
+	if (triggerType === TriggerType.Ask) {
+		result.explanation = response
+		return result
+	}
+
+	// Try to parse SEARCH/REPLACE blocks first
+	const searchReplaceEdits = parseSearchReplaceBlocks(response)
+	if (searchReplaceEdits.length > 0) {
+		result.edits = searchReplaceEdits
+
+		// Extract any explanation text (text before or after the code blocks)
+		const withoutCodeBlocks = response.replace(/([^\s]+?)\n<<<<<<< SEARCH\n[\s\S]*?>>>>>>> REPLACE/g, "")
+		result.explanation = withoutCodeBlocks.trim()
+
+		return result
+	}
+
+	// If no SEARCH/REPLACE blocks found, try unified diffs
+	const unifiedDiffEdits = findDiffs(response).map((edit) => {
+		// Convert from old format to new format
+		const [before, after] = hunkToBeforeAfter(edit.hunk, true) as [string[], string[]]
+
+		return {
+			filePath: edit.path,
+			blocks: [
+				{ type: "SEARCH" as const, content: (before as string[]).join("\n") },
+				{ type: "REPLACE" as const, content: (after as string[]).join("\n") },
+			],
+		}
+	})
+
+	if (unifiedDiffEdits.length > 0) {
+		result.edits = unifiedDiffEdits
+
+		// Extract any explanation text (text before or after the code blocks)
+		const withoutDiffs = response.replace(/```diff[\s\S]*?```/g, "").replace(/---[\s\S]*?(?=\n\n|$)/g, "")
+		result.explanation = withoutDiffs.trim()
+
+		return result
+	}
+
+	// If no edits found, treat the entire response as explanation
+	result.explanation = response
+
+	console.log(
+		`[WatchMode DEBUG] Parsed ${result.edits.length} edits, explanation length: ${result.explanation.length}`,
+	)
+	return result
 }
 
 /**
  * Parses unified diffs from the AI response
  * @param response The AI response containing unified diffs
  * @returns An array of parsed diffs
- */
-/**
- * Extracts diffs from content
  */
 export function findDiffs(content: string): DiffEdit[] {
 	// Ensure content ends with newline
@@ -981,12 +1115,259 @@ export const applyDiffToDocument = async (
 }
 
 /**
- * Processes the AI response and applies it to the document
+ * Applies SEARCH/REPLACE blocks to a document
  * @param document The document to modify
- * @param commentData The original AI comment data
- * @param response The AI response
- * @returns A promise that resolves to true if the response was applied successfully
+ * @param edits The NewDiffEdit objects containing SEARCH/REPLACE blocks
+ * @returns A promise that resolves to true if the edits were applied successfully
  */
+/**
+ * Applies SEARCH/REPLACE blocks to a document with enhanced fuzzy matching
+ * @param document The document to modify
+ * @param edits The NewDiffEdit objects containing SEARCH/REPLACE blocks
+ * @returns A promise that resolves to true if the edits were applied successfully
+ */
+export const applySearchReplaceEdits = async (
+	document: vscode.TextDocument,
+	edits: NewDiffEdit[],
+): Promise<boolean> => {
+	try {
+		const edit = new vscode.WorkspaceEdit()
+		const documentContent = document.getText()
+		let success = false
+		const documentUri = document.uri
+		const documentPath = vscode.workspace.asRelativePath(documentUri)
+
+		for (const diffEdit of edits) {
+			// Skip edits for other files if the path doesn't match exactly
+			// We'll try fuzzy file matching later if needed
+			const isTargetFile = vscode.workspace.asRelativePath(document.uri) === diffEdit.filePath
+
+			if (!isTargetFile) {
+				continue
+			}
+
+			// Each edit should have exactly two blocks: SEARCH and REPLACE
+			if (diffEdit.blocks.length !== 2) {
+				continue
+			}
+
+			const searchBlock = diffEdit.blocks.find((block) => block.type === "SEARCH")
+			const replaceBlock = diffEdit.blocks.find((block) => block.type === "REPLACE")
+
+			if (!searchBlock || !replaceBlock) {
+				continue
+			}
+
+			// Find the search text in the document using progressively more fuzzy matching
+			const searchText = searchBlock.content
+
+			// 1. Try exact match first
+			if (documentContent.includes(searchText)) {
+				console.log(`[WatchMode DEBUG] Found exact match in ${documentPath}`)
+
+				// Check if the search text appears multiple times
+				const regex = new RegExp(escapeRegExp(searchText), "g")
+				const matches = documentContent.match(regex)
+
+				if (matches && matches.length > 1) {
+					console.log(
+						`[WatchMode DEBUG] Warning: Search text appears ${matches.length} times in ${documentPath}`,
+					)
+					// Continue anyway, but use the first occurrence
+				}
+
+				const range = new vscode.Range(
+					document.positionAt(documentContent.indexOf(searchText)),
+					document.positionAt(documentContent.indexOf(searchText) + searchText.length),
+				)
+
+				edit.replace(document.uri, range, replaceBlock.content)
+				success = true
+				continue
+			}
+
+			// 2. Try with normalized whitespace
+			const normalizedSearch = searchText.replace(/\s+/g, " ").trim()
+			const normalizedContent = documentContent.replace(/\s+/g, " ").trim()
+
+			if (normalizedContent.includes(normalizedSearch)) {
+				console.log(`[WatchMode DEBUG] Found match with normalized whitespace in ${documentPath}`)
+
+				// Find the position in normalized content
+				const startPos = normalizedContent.indexOf(normalizedSearch)
+				const endPos = startPos + normalizedSearch.length
+
+				// Map back to original content positions
+				let originalStartPos = 0
+				let originalEndPos = 0
+				let normalizedPos = 0
+
+				for (let i = 0; i < documentContent.length; i++) {
+					const char = documentContent[i]
+					if (
+						!/\s/.test(char) ||
+						(i > 0 && /\S/.test(documentContent[i - 1]) && /\S/.test(documentContent[i + 1]))
+					) {
+						if (normalizedPos === startPos) {
+							originalStartPos = i
+						}
+						if (normalizedPos === endPos) {
+							originalEndPos = i
+							break
+						}
+						normalizedPos++
+					}
+				}
+
+				// If we couldn't map back properly, use a more approximate approach
+				if (originalEndPos <= originalStartPos) {
+					// Find a unique substring from the search text
+					const uniqueSubstring = findUniqueSubstring(searchText, documentContent)
+					if (uniqueSubstring) {
+						const substringPos = documentContent.indexOf(uniqueSubstring)
+						if (substringPos >= 0) {
+							// Expand around the unique substring to find the best match
+							const [expandedStart, expandedEnd] = expandAroundMatch(
+								documentContent,
+								substringPos,
+								substringPos + uniqueSubstring.length,
+								searchText,
+							)
+							originalStartPos = expandedStart
+							originalEndPos = expandedEnd
+						}
+					}
+				}
+
+				if (originalEndPos > originalStartPos) {
+					const range = new vscode.Range(
+						document.positionAt(originalStartPos),
+						document.positionAt(originalEndPos),
+					)
+
+					edit.replace(document.uri, range, replaceBlock.content)
+					success = true
+					continue
+				}
+			}
+
+			// 3. Try case-insensitive match
+			const lowerSearch = searchText.toLowerCase()
+			const lowerContent = documentContent.toLowerCase()
+
+			if (lowerContent.includes(lowerSearch)) {
+				console.log(`[WatchMode DEBUG] Found case-insensitive match in ${documentPath}`)
+
+				const startPos = lowerContent.indexOf(lowerSearch)
+				const endPos = startPos + lowerSearch.length
+
+				const range = new vscode.Range(document.positionAt(startPos), document.positionAt(endPos))
+
+				edit.replace(document.uri, range, replaceBlock.content)
+				success = true
+				continue
+			}
+
+			console.log(`[WatchMode DEBUG] Search text not found in document: ${searchText.substring(0, 50)}...`)
+		}
+
+		if (success) {
+			return await vscode.workspace.applyEdit(edit)
+		}
+
+		// If we couldn't find matches in the current file, try searching other files in the workspace
+		// This would be implemented in a real system, but for now we'll just log it
+		console.log("[WatchMode DEBUG] No matches found in current file, would search other files in context")
+
+		return false
+	} catch (error) {
+		console.error("[WatchMode DEBUG] Error applying SEARCH/REPLACE edits:", error)
+		return false
+	}
+}
+
+/**
+ * Finds a unique substring from the search text that appears only once in the content
+ * @param searchText The search text
+ * @param content The document content
+ * @returns A unique substring or null if none found
+ */
+function findUniqueSubstring(searchText: string, content: string): string | null {
+	// Try different lengths of substrings
+	for (let length = Math.min(searchText.length, 40); length >= 10; length--) {
+		for (let i = 0; i <= searchText.length - length; i++) {
+			const substring = searchText.substring(i, i + length)
+			if (substring.trim().length < 5) continue // Skip very short substrings
+
+			// Check if this substring appears exactly once
+			const regex = new RegExp(escapeRegExp(substring), "g")
+			const matches = content.match(regex)
+
+			if (matches && matches.length === 1) {
+				return substring
+			}
+		}
+	}
+
+	return null
+}
+
+/**
+ * Expands a match to find the best boundaries
+ * @param content The document content
+ * @param startPos The starting position of the match
+ * @param endPos The ending position of the match
+ * @param searchText The original search text
+ * @returns The expanded start and end positions
+ */
+function expandAroundMatch(content: string, startPos: number, endPos: number, searchText: string): [number, number] {
+	// Try to expand to line boundaries
+	let expandedStart = startPos
+	while (expandedStart > 0 && content[expandedStart - 1] !== "\n") {
+		expandedStart--
+	}
+
+	let expandedEnd = endPos
+	while (expandedEnd < content.length && content[expandedEnd] !== "\n") {
+		expandedEnd++
+	}
+
+	// If the expanded text is too different from the search text, revert to original
+	const expandedText = content.substring(expandedStart, expandedEnd)
+	const similarity = calculateSimilarity(expandedText, searchText)
+
+	if (similarity < 0.5) {
+		return [startPos, endPos]
+	}
+
+	return [expandedStart, expandedEnd]
+}
+
+/**
+ * Calculates a simple similarity score between two strings
+ * @param a First string
+ * @param b Second string
+ * @returns Similarity score between 0 and 1
+ */
+function calculateSimilarity(a: string, b: string): number {
+	const longer = a.length > b.length ? a : b
+	const shorter = a.length > b.length ? b : a
+
+	if (longer.length === 0) {
+		return 1.0
+	}
+
+	// Count matching characters
+	let matches = 0
+	for (let i = 0; i < shorter.length; i++) {
+		if (longer.includes(shorter[i])) {
+			matches++
+		}
+	}
+
+	return matches / longer.length
+}
+
 /**
  * Processes the AI response and applies it to the document
  * @param document The document to modify
@@ -994,10 +1375,24 @@ export const applyDiffToDocument = async (
  * @param response The AI response
  * @returns A promise that resolves to true if the response was applied successfully
  */
+/**
+ * Maximum number of reflection attempts for failed edits
+ */
+const MAX_REFLECTION_ATTEMPTS = 3
+
+/**
+ * Processes the AI response and applies it to the document
+ * @param document The document to modify
+ * @param commentData The original AI comment data
+ * @param response The AI response
+ * @param reflectionAttempt Current reflection attempt number (for retry logic)
+ * @returns A promise that resolves to true if the response was applied successfully
+ */
 export const processAIResponse = async (
 	document: vscode.TextDocument,
 	commentData: AICommentData,
 	response: string,
+	reflectionAttempt: number = 0,
 ): Promise<boolean> => {
 	console.log("[WatchMode DEBUG] ====== processAIResponse START ======")
 	console.log("[WatchMode DEBUG] Document URI:", document.uri.toString())
@@ -1007,21 +1402,47 @@ export const processAIResponse = async (
 	)
 	console.log("[WatchMode DEBUG] Response length:", response.length)
 	console.log("[WatchMode DEBUG] Response preview:", response.substring(0, 100) + "...")
+	console.log("[WatchMode DEBUG] Reflection attempt:", reflectionAttempt)
 
 	try {
-		const diffHandler = new UnifiedDiffHandler()
+		// Determine the trigger type from the comment content
+		const triggerType = determineTriggerType(commentData.content)
+		console.log(`[WatchMode DEBUG] Trigger type: ${triggerType}`)
 
-		// Extract edits from the response
-		const edits = diffHandler.getEdits(response)
-		console.log(`[WatchMode DEBUG] Found ${edits.length} diff edits in response`)
+		// Parse the AI response
+		const parsedResponse = parseAIResponse(response, triggerType)
+		console.log(
+			`[WatchMode DEBUG] Parsed response: ${parsedResponse.edits.length} edits, explanation length: ${parsedResponse.explanation.length}`,
+		)
 
-		if (edits.length === 0) {
-			console.log("[WatchMode DEBUG] No diffs found in response")
+		// If it's a question, just show the explanation
+		if (triggerType === TriggerType.Ask) {
+			// Show the explanation in a new editor or information message
+			await vscode.window.showInformationMessage(
+				"AI Response: " + parsedResponse.explanation.substring(0, 100) + "...",
+			)
 
-			// If no diffs were found, check if there are code blocks that should replace the comment
+			// Remove the comment
+			const edit = new vscode.WorkspaceEdit()
+			const range = new vscode.Range(commentData.startPos, commentData.endPos)
+			edit.delete(document.uri, range)
+			const result = await vscode.workspace.applyEdit(edit)
+
+			console.log(`[WatchMode DEBUG] Comment removal result: ${result ? "SUCCESS" : "FAILED"}`)
+			console.log("[WatchMode DEBUG] ====== processAIResponse END ======")
+			return result
+		}
+
+		// If there are no edits but there's an explanation, show it
+		if (parsedResponse.edits.length === 0 && parsedResponse.explanation) {
+			console.log("[WatchMode DEBUG] No edits found, but explanation exists")
+
+			// Check if there are code blocks in the explanation that should replace the comment
 			const codeBlocks: string[] = []
+			// Use the existing CODE_BLOCK_REGEX constant
 			let match
-			while ((match = CODE_BLOCK_REGEX.exec(response)) !== null) {
+
+			while ((match = CODE_BLOCK_REGEX.exec(parsedResponse.explanation)) !== null) {
 				if (match[1]) {
 					codeBlocks.push(match[1].trim())
 				}
@@ -1043,7 +1464,7 @@ export const processAIResponse = async (
 				return result
 			}
 
-			// If no code blocks were found either, just remove the comment
+			// If no code blocks were found, just remove the comment
 			console.log("[WatchMode DEBUG] No code blocks found, removing comment")
 			const edit = new vscode.WorkspaceEdit()
 			const range = new vscode.Range(commentData.startPos, commentData.endPos)
@@ -1056,51 +1477,201 @@ export const processAIResponse = async (
 			return result
 		}
 
-		// First, remove the comment
-		// const commentEdit = new vscode.WorkspaceEdit()
-		// const commentRange = new vscode.Range(commentData.startPos, commentData.endPos)
-		// commentEdit.delete(document.uri, commentRange)
-		// await vscode.workspace.applyEdit(commentEdit)
-		console.log("[WatchMode DEBUG] Removed comment")
+		// Try to apply SEARCH/REPLACE edits first
+		let success = await applySearchReplaceEdits(document, parsedResponse.edits)
 
-		// Apply all edits to the document
-		const documentContent = document.getText()
-		const [newContent, errors] = diffHandler.applyEdits(edits, documentContent, document.uri)
+		// If SEARCH/REPLACE failed, try unified diff as fallback
+		if (!success) {
+			console.log("[WatchMode DEBUG] SEARCH/REPLACE edits failed, trying unified diff")
 
-		if (errors.length > 0) {
-			// Log errors but continue with the successful edits
-			console.log(`[WatchMode DEBUG] Encountered ${errors.length} errors while applying diffs`)
-			for (const error of errors) {
-				console.log(`[WatchMode DEBUG] Error: ${error.split("\n")[0]}`)
+			// Convert the edits to the old format
+			const oldFormatEdits = parsedResponse.edits.map((edit) => ({
+				path: edit.filePath,
+				hunk: edit.blocks.flatMap((block) =>
+					block.content
+						.split("\n")
+						.map((line) =>
+							block.type === "SEARCH" ? " " + line : block.type === "REPLACE" ? "+" + line : line,
+						),
+				),
+			}))
+
+			const diffHandler = new UnifiedDiffHandler()
+			const documentContent = document.getText()
+			const [newContent, errors] = diffHandler.applyEdits(oldFormatEdits, documentContent, document.uri)
+
+			if (errors.length > 0) {
+				// Log errors but continue with the successful edits
+				console.log(`[WatchMode DEBUG] Encountered ${errors.length} errors while applying diffs`)
+				for (const error of errors) {
+					console.log(`[WatchMode DEBUG] Error: ${error.split("\n")[0]}`)
+				}
+
+				// If all edits failed, try reflection if we haven't exceeded the maximum attempts
+				if (errors.length >= oldFormatEdits.length) {
+					console.log("[WatchMode DEBUG] All edits failed to apply")
+
+					if (reflectionAttempt < MAX_REFLECTION_ATTEMPTS) {
+						console.log(`[WatchMode DEBUG] Attempting reflection #${reflectionAttempt + 1}`)
+
+						// Signal that reflection is needed
+						// The WatchModeService will handle building the reflection prompt
+						console.log("[WatchMode DEBUG] ====== processAIResponse END (needs reflection) ======")
+
+						// Log the error messages for debugging
+						console.log("[WatchMode DEBUG] Error messages that will be sent to reflection:")
+						errors.forEach((error, index) => {
+							console.log(`[WatchMode DEBUG] Error ${index + 1}: ${error}`)
+						})
+
+						throw new Error(
+							`REFLECTION_NEEDED:${reflectionAttempt + 1}:${errors.map((e) => e.split("\n")[0]).join("|")}`,
+						)
+					}
+
+					console.log("[WatchMode DEBUG] ====== processAIResponse END (max reflections reached) ======")
+					return false
+				}
 			}
 
-			// If all edits failed, return false
-			if (errors.length >= edits.length) {
-				console.log("[WatchMode DEBUG] All edits failed to apply")
-				console.log("[WatchMode DEBUG] ====== processAIResponse END ======")
-				return false
+			// Apply the updated content to the document if different from the original
+			if (newContent !== documentContent) {
+				const fullRange = new vscode.Range(
+					new vscode.Position(0, 0),
+					document.positionAt(documentContent.length),
+				)
+
+				const edit = new vscode.WorkspaceEdit()
+				edit.replace(document.uri, fullRange, newContent)
+				success = await vscode.workspace.applyEdit(edit)
+
+				console.log(`[WatchMode DEBUG] Applied updated content: ${success ? "SUCCESS" : "FAILED"}`)
 			}
 		}
 
-		// Apply the updated content to the document if different from the original
-		if (newContent !== documentContent) {
-			const fullRange = new vscode.Range(new vscode.Position(0, 0), document.positionAt(documentContent.length))
-
-			const edit = new vscode.WorkspaceEdit()
-			edit.replace(document.uri, fullRange, newContent)
-			const result = await vscode.workspace.applyEdit(edit)
-
-			console.log(`[WatchMode DEBUG] Applied updated content: ${result ? "SUCCESS" : "FAILED"}`)
-			console.log("[WatchMode DEBUG] ====== processAIResponse END ======")
-			return result
-		}
-
-		console.log("[WatchMode DEBUG] No changes made to document")
+		console.log(`[WatchMode DEBUG] Process result: ${success ? "SUCCESS" : "FAILED"}`)
 		console.log("[WatchMode DEBUG] ====== processAIResponse END ======")
-		return errors.length === 0
+		return success
 	} catch (error) {
+		// Check if this is a reflection request
+		if (error instanceof Error && error.message.startsWith("REFLECTION_NEEDED:")) {
+			// Let the calling code handle the reflection
+			throw error
+		}
+
 		console.error("[WatchMode DEBUG] Error in processAIResponse:", error)
 		console.log("[WatchMode DEBUG] ====== processAIResponse END (with error) ======")
 		return false
 	}
+}
+
+/**
+ * Builds a reflection prompt for the AI model when edits fail
+ * @param commentData The original AI comment data
+ * @param originalResponse The original AI response that failed
+ * @param errors The errors encountered when applying the edits
+ * @returns A prompt for the AI model to reflect on the errors
+ */
+export function buildReflectionPrompt(
+	commentData: AICommentData,
+	originalResponse: string,
+	errors: string[],
+	activeFiles: { uri: vscode.Uri; content: string }[] = [],
+): string {
+	console.log("[WatchMode DEBUG] Building reflection prompt")
+	const { content, context, fileUri } = commentData
+	const filePath = vscode.workspace.asRelativePath(fileUri)
+
+	// Extract the prefix without the exclamation mark for display in the prompt
+	const displayPrefix = currentAICommentPrefix.endsWith("!")
+		? currentAICommentPrefix.slice(0, -1)
+		: currentAICommentPrefix
+
+	// Create the reflection prompt with escaped markers
+	let prompt = `
+You are Kilo Code, a highly skilled software engineer with extensive knowledge in many programming languages, frameworks, design patterns, and best practices.
+
+# Task
+
+${content}
+
+I've written your instructions in comments in the code and marked them with "${displayPrefix}"
+You can see the "${displayPrefix}" comments shown below.
+Find them in the code files I've shared with you, and follow their instructions.
+
+# Code to modify
+
+\`\`\`
+${context || "No context available"}
+\`\`\`
+
+# Previous response
+
+Your previous response failed to apply correctly. Here's what you provided:
+
+\`\`\`
+${originalResponse}
+\`\`\`
+
+# Errors
+
+The following errors occurred when trying to apply your changes:
+
+${errors.join("\n\n")}
+`
+
+	// Add content from active files for additional context
+	if (activeFiles.length > 0) {
+		prompt += `\n\n# Additional context from open files\n\n`
+
+		for (const file of activeFiles) {
+			if (file.uri.toString() !== fileUri.toString()) {
+				// Skip the file with the comment
+				const relativePath = vscode.workspace.asRelativePath(file.uri)
+				prompt += `## ${relativePath}\n\n\`\`\`\n${file.content}\n\`\`\`\n\n`
+			}
+		}
+	}
+
+	prompt += `
+# Response format
+
+Please correct your previous response to address these errors. Make sure your SEARCH blocks exactly match the code in the file.
+You MUST respond with SEARCH/REPLACE blocks for each edit. Format your changes as follows:
+
+${filePath}
+\`<<<<<<< SEARCH\`
+exact original code
+\`=======\`
+replacement code
+\`>>>>>>> REPLACE\`
+
+You can include multiple SEARCH/REPLACE blocks for the same file, and you can edit multiple files.
+Make sure to include enough context in the SEARCH block to uniquely identify the code to replace.
+After completing the instructions, also BE SURE to remove all the "${displayPrefix}" comments from the code.
+
+If you need to explain your changes, please do so before or after the code blocks.
+`
+
+	const finalPrompt = prompt.trim()
+
+	// Log the full reflection prompt for debugging
+	console.log("[WatchMode DEBUG] === FULL REFLECTION PROMPT ===")
+	console.log(finalPrompt)
+	console.log("[WatchMode DEBUG] === END REFLECTION PROMPT ===")
+
+	// Debug log the full reflection prompt string
+	console.debug(
+		"[WatchMode DEBUG] Full reflection prompt string:",
+		JSON.stringify({
+			prompt: finalPrompt,
+			length: finalPrompt.length,
+			estimatedTokens: estimateTokenCount(finalPrompt),
+			originalResponseLength: originalResponse.length,
+			errorsCount: errors.length,
+			timestamp: new Date().toISOString(),
+		}),
+	)
+
+	return finalPrompt
 }

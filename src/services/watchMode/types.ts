@@ -78,3 +78,24 @@ export interface WatchModeConfig {
  * Type for API handler factory function
  */
 export type ApiHandlerFactory = () => Promise<any>
+
+export enum TriggerType {
+	Edit = "edit",
+	Ask = "ask",
+}
+
+export interface DiffBlock {
+	type: "SEARCH" | "REPLACE"
+	content: string
+}
+
+export interface DiffEdit {
+	filePath: string
+	blocks: DiffBlock[]
+}
+
+export interface AIResponse {
+	edits: DiffEdit[]
+	explanation: string
+	triggerType: TriggerType
+}

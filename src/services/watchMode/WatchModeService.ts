@@ -1,7 +1,7 @@
 import * as vscode from "vscode"
 import { Anthropic } from "@anthropic-ai/sdk"
 import { EXPERIMENT_IDS, ExperimentId, experiments } from "../../shared/experiments"
-import { AICommentData, FileChangeData, WatchModeConfig } from "./types"
+import { AICommentData, FileChangeData, WatchModeConfig, TriggerType } from "./types"
 import { WatchModeUI } from "./ui"
 import { ApiHandler, buildApiHandler } from "../../api"
 import { ContextProxy } from "../../core/config/ContextProxy"
@@ -12,6 +12,9 @@ import {
 	processAIResponse,
 	updateAICommentPatterns,
 	updateCurrentAICommentPrefix,
+	determineTriggerType,
+	buildReflectionPrompt,
+	estimateTokenCount,
 } from "./commentProcessor"
 import { WatchModeHighlighter } from "./WatchModeHighlighter"
 
@@ -38,6 +41,11 @@ export class WatchModeService {
 	private staticHighlights: Map<string, () => void> = new Map()
 	private recentlyProcessedFiles: Map<string, number> = new Map()
 	private processingDebounceTime: number = 500 // ms to prevent duplicate processing
+
+	// Track active files for context management
+	private activeFiles: Set<string> = new Set()
+	private maxActiveFiles: number = 10 // Maximum number of files to keep in active context
+	private largeFileThreshold: number = 1000000 // ~1MB threshold for large files
 
 	// Event emitters
 	private readonly _onDidChangeActiveState = new vscode.EventEmitter<boolean>()
@@ -323,6 +331,47 @@ export class WatchModeService {
 	 * Processes a file to find and handle AI comments
 	 * @param fileUri URI of the file to process
 	 */
+	/**
+	 * Adds a file to the active files list
+	 * @param fileUri The URI of the file to add
+	 */
+	private addToActiveFiles(fileUri: vscode.Uri): void {
+		const fileKey = fileUri.toString()
+
+		// If already in the set, remove it so it can be added to the front (most recent)
+		if (this.activeFiles.has(fileKey)) {
+			this.activeFiles.delete(fileKey)
+		}
+
+		// Add to the active files set
+		this.activeFiles.add(fileKey)
+
+		// If we've exceeded the maximum, remove the oldest file
+		if (this.activeFiles.size > this.maxActiveFiles) {
+			const iterator = this.activeFiles.values()
+			const oldest = iterator.next().value
+
+			if (oldest) {
+				this.activeFiles.delete(oldest)
+				this.log(`Removed ${oldest} from active files (exceeded max of ${this.maxActiveFiles})`)
+			}
+		}
+
+		this.log(`Active files (${this.activeFiles.size}): ${Array.from(this.activeFiles).join(", ")}`)
+	}
+
+	/**
+	 * Gets a list of active files for context
+	 * @returns Array of active file URIs
+	 */
+	private getActiveFiles(): vscode.Uri[] {
+		return Array.from(this.activeFiles).map((uri) => vscode.Uri.parse(uri))
+	}
+
+	/**
+	 * Processes a file to find and handle AI comments
+	 * @param fileUri URI of the file to process
+	 */
 	private async processFile(fileUri: vscode.Uri): Promise<void> {
 		try {
 			this.log(`Processing file: ${fileUri.fsPath}`)
@@ -331,10 +380,13 @@ export class WatchModeService {
 			const document = await vscode.workspace.openTextDocument(fileUri)
 			const content = document.getText()
 
+			// Add to active files list (even if large, we want to track it)
+			this.addToActiveFiles(fileUri)
+
 			// Skip processing if file is too large
-			if (content.length > 1000000) {
-				// Skip files larger than ~1MB
-				this.log(`Skipping large file: ${fileUri.fsPath}`)
+			if (content.length > this.largeFileThreshold) {
+				// Skip files larger than threshold
+				this.log(`Skipping large file: ${fileUri.fsPath} (${content.length} bytes)`)
 				return
 			}
 
@@ -374,14 +426,21 @@ export class WatchModeService {
 	 * Detects and highlights comments in a document without animation
 	 * @param document The document to check
 	 */
+	/**
+	 * Detects and highlights comments in a document without animation
+	 * @param document The document to check
+	 */
 	private detectAndHighlightComments(document: vscode.TextDocument): void {
 		try {
 			const fileUri = document.uri
 			const content = document.getText()
 
-			// Skip files larger than ~1MB
-			if (content.length > 1000000) {
-				this.log(`Skipping large file: ${fileUri.fsPath}`)
+			// Add to active files list (even if large, we want to track it)
+			this.addToActiveFiles(fileUri)
+
+			// Skip files larger than threshold
+			if (content.length > this.largeFileThreshold) {
+				this.log(`Skipping large file: ${fileUri.fsPath} (${content.length} bytes)`)
 				return
 			}
 
@@ -531,68 +590,13 @@ export class WatchModeService {
 			// Emit event that we're starting to process this comment
 			this._onDidStartProcessingComment.fire({ fileUri: document.uri, comment })
 
-			// Build prompt from the comment and context
-			this.log("Building AI prompt...")
-			const prompt = buildAIPrompt(comment)
-			this.log(`Prompt built, length: ${prompt.length} characters`)
+			// Determine the trigger type from the comment content
+			this.log("Determining trigger type...")
+			const triggerType = determineTriggerType(comment.content)
+			this.log(`Trigger type determined: ${triggerType}`)
 
-			// Get response from AI model
-			this.log("Calling AI model...")
-
-			let apiResponse: string | null = null
-			try {
-				apiResponse = await this.callAIModel(prompt)
-				this.log(`API response received, length: ${apiResponse?.length || 0} characters`)
-			} catch (apiError) {
-				this.log(`Error calling AI model: ${apiError instanceof Error ? apiError.message : String(apiError)}`)
-				apiResponse = null
-			}
-
-			if (!apiResponse) {
-				this.log("No response from AI model")
-				this._onDidFinishProcessingComment.fire({
-					fileUri: document.uri,
-					comment,
-					success: false,
-				})
-				clearHighlight()
-				return
-			}
-
-			// Process the AI response
-			this.log("Processing AI response...")
-			let success = false
-			try {
-				success = await processAIResponse(document, comment, apiResponse)
-				this.log(`Response processed, success: ${success}`)
-			} catch (processError) {
-				this.log(
-					`Error processing response: ${processError instanceof Error ? processError.message : String(processError)}`,
-				)
-				this._onDidFinishProcessingComment.fire({
-					fileUri: document.uri,
-					comment,
-					success: false,
-				})
-				clearHighlight()
-				return
-			}
-
-			if (success) {
-				this.log(`Successfully applied AI response to ${document.uri.fsPath}`)
-			} else {
-				this.log(`Failed to apply AI response to ${document.uri.fsPath}`)
-			}
-
-			// Emit event that we've finished processing this comment
-			this._onDidFinishProcessingComment.fire({
-				fileUri: document.uri,
-				comment,
-				success,
-			})
-
-			// Clear the highlight
-			clearHighlight()
+			// Process with reflection support (up to 3 attempts)
+			await this.processWithReflection(document, comment, triggerType, clearHighlight)
 		} catch (error) {
 			this.log(`Error processing AI comment: ${error instanceof Error ? error.message : String(error)}`)
 			this._onDidFinishProcessingComment.fire({
@@ -601,6 +605,238 @@ export class WatchModeService {
 				success: false,
 			})
 		}
+	}
+
+	/**
+	 * Processes an AI comment with support for reflection on failed edits
+	 * @param document The document containing the comment
+	 * @param comment The AI comment data
+	 * @param triggerType The trigger type (Edit or Ask)
+	 * @param clearHighlight Function to clear the highlight
+	 */
+	private async processWithReflection(
+		document: vscode.TextDocument,
+		comment: AICommentData,
+		triggerType: TriggerType,
+		clearHighlight: () => void,
+	): Promise<void> {
+		// Maximum number of reflection attempts
+		const MAX_REFLECTION_ATTEMPTS = 3
+		let currentAttempt = 0
+		let success = false
+		let lastResponse: string | null = null
+
+		while (currentAttempt <= MAX_REFLECTION_ATTEMPTS) {
+			try {
+				// Build prompt from the comment and context
+				this.log(`Building AI prompt (attempt ${currentAttempt})...`)
+
+				// Gather content from active files for additional context
+				const activeFilesWithContent: { uri: vscode.Uri; content: string }[] = []
+
+				// Maximum token budget for additional context (roughly 50% of model's context window)
+				const MAX_ADDITIONAL_CONTEXT_TOKENS = 50000
+				let estimatedTokens = 0
+
+				// First, estimate tokens for the base prompt
+				const basePrompt = buildAIPrompt(comment, triggerType)
+				estimatedTokens += estimateTokenCount(basePrompt)
+
+				// Get active files and sort by recency (most recent first)
+				const activeFileUris = this.getActiveFiles()
+
+				// Prioritize open editor tabs
+				const openEditors = vscode.window.visibleTextEditors.map((editor) => editor.document.uri.toString())
+
+				// Sort active files: open editors first, then other active files
+				const sortedActiveFiles = activeFileUris.sort((a, b) => {
+					const aIsOpen = openEditors.includes(a.toString())
+					const bIsOpen = openEditors.includes(b.toString())
+
+					if (aIsOpen && !bIsOpen) return -1
+					if (!aIsOpen && bIsOpen) return 1
+					return 0
+				})
+
+				// Add content from active files until we reach the token limit
+				for (const uri of sortedActiveFiles) {
+					// Skip the file with the comment (already included in the context)
+					if (uri.toString() === document.uri.toString()) {
+						continue
+					}
+
+					try {
+						// Skip files that are too large
+						if (uri.fsPath.endsWith(".min.js") || uri.fsPath.endsWith(".min.css")) {
+							this.log(`Skipping minified file: ${uri.fsPath}`)
+							continue
+						}
+
+						const doc = await vscode.workspace.openTextDocument(uri)
+						const content = doc.getText()
+
+						// Skip if file is too large
+						if (content.length > this.largeFileThreshold) {
+							this.log(`Skipping large file for context: ${uri.fsPath} (${content.length} bytes)`)
+							continue
+						}
+
+						// Estimate tokens for this file
+						const fileTokens = estimateTokenCount(content)
+
+						// If adding this file would exceed our budget, skip it
+						if (estimatedTokens + fileTokens > MAX_ADDITIONAL_CONTEXT_TOKENS) {
+							this.log(`Skipping file due to token budget: ${uri.fsPath} (${fileTokens} tokens)`)
+							continue
+						}
+
+						// Add file to context
+						activeFilesWithContent.push({ uri, content })
+						estimatedTokens += fileTokens
+
+						this.log(`Added file to context: ${uri.fsPath} (${fileTokens} tokens)`)
+					} catch (error) {
+						this.log(
+							`Error reading file ${uri.fsPath}: ${error instanceof Error ? error.message : String(error)}`,
+						)
+					}
+				}
+
+				this.log(
+					`Total context includes ${activeFilesWithContent.length} additional files (est. ${estimatedTokens} tokens)`,
+				)
+
+				// Ensure we always have a valid string prompt
+				const prompt =
+					currentAttempt === 0
+						? buildAIPrompt(comment, triggerType, activeFilesWithContent)
+						: lastResponse || buildAIPrompt(comment, triggerType, activeFilesWithContent)
+
+				this.log(`Prompt built, length: ${prompt.length} characters`)
+				// Log the full prompt for debugging
+				console.log("=== FULL PROMPT ===")
+				console.log(prompt)
+				console.log("=== END PROMPT ===")
+
+				// Get response from AI model
+				this.log("Calling AI model...")
+				let apiResponse: string | null = null
+
+				try {
+					// We know prompt is a valid string at this point
+					apiResponse = await this.callAIModel(prompt)
+					this.log(`API response received, length: ${apiResponse?.length || 0} characters`)
+					// Log the full response for debugging
+					console.log("=== FULL API RESPONSE ===")
+					console.log(apiResponse)
+					console.log("=== END API RESPONSE ===")
+				} catch (apiError) {
+					this.log(
+						`Error calling AI model: ${apiError instanceof Error ? apiError.message : String(apiError)}`,
+					)
+					apiResponse = null
+				}
+
+				if (!apiResponse) {
+					this.log("No response from AI model")
+					this._onDidFinishProcessingComment.fire({
+						fileUri: document.uri,
+						comment,
+						success: false,
+					})
+					clearHighlight()
+					return
+				}
+
+				// Process the AI response
+				this.log(`Processing AI response (attempt ${currentAttempt})...`)
+				try {
+					success = await processAIResponse(document, comment, apiResponse, currentAttempt)
+					this.log(`Response processed, success: ${success}`)
+
+					// If successful, break out of the loop
+					if (success) {
+						break
+					}
+
+					// If we've reached the maximum attempts, break out of the loop
+					if (currentAttempt >= MAX_REFLECTION_ATTEMPTS) {
+						break
+					}
+
+					// Increment the attempt counter
+					currentAttempt++
+				} catch (processError) {
+					// Check if this is a reflection request
+					if (processError instanceof Error && processError.message.startsWith("REFLECTION_NEEDED:")) {
+						// Parse the reflection information
+						const parts = processError.message.split(":")
+						const nextAttempt = parseInt(parts[1], 10)
+						const errorMessages = parts[2].split("|")
+
+						this.log(`Reflection needed, attempt ${nextAttempt} of ${MAX_REFLECTION_ATTEMPTS}`)
+						this.log(`Error messages: ${errorMessages.join(", ")}`)
+
+						// Update the attempt counter
+						currentAttempt = nextAttempt
+
+						// Build a reflection prompt with active files context
+						const reflectionPrompt = buildReflectionPrompt(
+							comment,
+							apiResponse,
+							errorMessages,
+							activeFilesWithContent,
+						)
+						lastResponse = reflectionPrompt
+
+						// Log the full reflection prompt for debugging
+						console.log("=== FULL REFLECTION PROMPT ===")
+						console.log(reflectionPrompt)
+						console.log("=== END REFLECTION PROMPT ===")
+
+						// Continue to the next iteration
+						continue
+					} else {
+						// Handle other errors
+						this.log(
+							`Error processing response: ${processError instanceof Error ? processError.message : String(processError)}`,
+						)
+						this._onDidFinishProcessingComment.fire({
+							fileUri: document.uri,
+							comment,
+							success: false,
+						})
+						clearHighlight()
+						return
+					}
+				}
+			} catch (error) {
+				this.log(`Error in reflection loop: ${error instanceof Error ? error.message : String(error)}`)
+				this._onDidFinishProcessingComment.fire({
+					fileUri: document.uri,
+					comment,
+					success: false,
+				})
+				clearHighlight()
+				return
+			}
+		}
+
+		if (success) {
+			this.log(`Successfully applied AI response to ${document.uri.fsPath}`)
+		} else {
+			this.log(`Failed to apply AI response to ${document.uri.fsPath} after ${currentAttempt} attempts`)
+		}
+
+		// Emit event that we've finished processing this comment
+		this._onDidFinishProcessingComment.fire({
+			fileUri: document.uri,
+			comment,
+			success,
+		})
+
+		// Clear the highlight
+		clearHighlight()
 	}
 
 	/**
