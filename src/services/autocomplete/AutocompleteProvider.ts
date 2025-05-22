@@ -152,11 +152,7 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 
 			// Set command to ensure VS Code knows this is a completion that can be accepted with Tab
 			item.command = { command: "editor.action.inlineSuggest.commit", title: "Accept Completion" }
-
-			// Mark that we're showing a preview
 			this.isShowingAutocompletePreview = true
-
-			// Set context for keybindings
 			vscode.commands.executeCommand("setContext", this.autocompletePreviewVisibleContextKey, true)
 
 			return [item]
@@ -222,12 +218,12 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 			vscode.workspace.onDidChangeTextDocument((e) => {
 				if (this.isLoadingCompletion) {
 					this.clearAutocompletePreview()
-				}
-
-				// Hide streaming decorator when document changes
-				const editor = vscode.window.activeTextEditor
-				if (editor && editor.document === e.document) {
-					editor.setDecorations(this.streamingDecorationType, [])
+				} else {
+					const editor = vscode.window.activeTextEditor
+					if (editor && editor.document === e.document) {
+						editor.setDecorations(this.loadingDecorationType, [])
+						editor.setDecorations(this.streamingDecorationType, [])
+					}
 				}
 			}),
 		)
