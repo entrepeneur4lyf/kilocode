@@ -469,7 +469,7 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		})
 
 		// Process the completion stream
-		const result = await this.processCompletionStream(systemPrompt, prompt, completionId, document)
+		const result = await this.processCompletionStream(systemPrompt, prompt.prompt, completionId, document)
 
 		if (result.isCancelled || token.isCancellationRequested) {
 			// Make sure to clear the loading indicator if the completion is cancelled
