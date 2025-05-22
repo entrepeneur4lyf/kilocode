@@ -10,7 +10,7 @@ import { ContextProxy } from "../../core/config/ContextProxy"
 import { generateImportSnippets, generateDefinitionSnippets } from "./context/snippetProvider" // Added import
 
 // Default configuration values
-const DEFAULT_DEBOUNCE_DELAY = 150
+export const DEFAULT_DEBOUNCE_DELAY = 150
 const DEFAULT_MODEL = "google/gemini-2.5-flash-preview"
 const MIN_TYPED_LENGTH_FOR_COMPLETION = 4
 

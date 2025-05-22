@@ -1,5 +1,5 @@
 import * as vscode from "vscode"
-import { AutocompleteProvider } from "../services/autocomplete/AutocompleteProvider"
+import { AutocompleteProvider, DEFAULT_DEBOUNCE_DELAY } from "../services/autocomplete/AutocompleteProvider"
 
 /**
  * Register the autocomplete provider with VSCode
@@ -44,7 +44,7 @@ export async function registerAutocomplete(context: vscode.ExtensionContext) {
 	}
 
 	if (!config.has("kilo-code.autocomplete.debounceDelay")) {
-		config.update("kilo-code.autocomplete.debounceDelay", 150, vscode.ConfigurationTarget.Global)
+		config.update("kilo-code.autocomplete.debounceDelay", DEFAULT_DEBOUNCE_DELAY, vscode.ConfigurationTarget.Global)
 	}
 
 	if (!config.has("kilo-code.autocomplete.useCache")) {
