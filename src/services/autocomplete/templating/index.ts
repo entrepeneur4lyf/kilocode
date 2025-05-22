@@ -34,7 +34,12 @@ function renderStringTemplate(
 	})
 }
 
-// AI! write me a fibonacci fn
+function fibonacci(n: number): number {
+    if (n <= 1) {
+        return n;
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
 
 export function renderPrompt({ workspaceDirs, helper }: { workspaceDirs: string[]; helper: HelperVars }): {
 	prompt: string
