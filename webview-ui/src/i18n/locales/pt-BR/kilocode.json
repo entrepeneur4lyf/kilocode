@@ -19,6 +19,15 @@
 			"mcp": "Servidores MCP"
 		}
 	},
+	"chat": {
+		"condense": {
+			"wantsToCondense": "Kilo Code quer condensar sua conversa",
+			"condenseConversation": "Condensar Conversa"
+		}
+	},
+	"newTaskPreview": {
+		"task": "Tarefa"
+	},
 	"autocompleteApiConfig": {
 		"title": "Configuração da API de autocompletar",
 		"description": "Configure qual configuração de API usar para a funcionalidade de autocompletar.",

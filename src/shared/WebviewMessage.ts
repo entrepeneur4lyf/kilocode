@@ -142,6 +142,8 @@ export interface WebviewMessage {
 		| "downloadMcp" // kilocode_change
 		| "showSystemNotification" // kilocode_change
 		| "showAutoApproveMenu" // kilocode_change
+		| "reportBug" // kilocode_change
+		| "condense" // kilocode_change
 	text?: string
 	disabled?: boolean
 	askResponse?: ClineAskResponse

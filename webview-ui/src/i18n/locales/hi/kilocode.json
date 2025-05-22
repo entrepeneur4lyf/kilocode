@@ -19,6 +19,15 @@
 			"mcp": "MCP सर्वर"
 		}
 	},
+	"chat": {
+		"condense": {
+			"wantsToCondense": "Kilo Code तुम्हारी बातचीत को संक्षिप्त करना चाहता है",
+			"condenseConversation": "बातचीत संक्षिप्त करें"
+		}
+	},
+	"newTaskPreview": {
+		"task": "कार्य"
+	},
 	"autocompleteApiConfig": {
 		"title": "स्वतः पूर्ण API कॉन्फ़िगरेशन",
 		"description": "स्वतः पूर्ण कार्यक्षमता के लिए किस API कॉन्फ़िगरेशन का उपयोग करना है, यह कॉन्फ़िगर करें।",

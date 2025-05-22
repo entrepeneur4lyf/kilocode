@@ -19,6 +19,15 @@
 			"mcp": "MCPサーバー"
 		}
 	},
+	"chat": {
+		"condense": {
+			"wantsToCondense": "Kilo Codeは会話を要約したいと思っています",
+			"condenseConversation": "会話を要約する"
+		}
+	},
+	"newTaskPreview": {
+		"task": "タスク"
+	},
 	"autocompleteApiConfig": {
 		"title": "オートコンプリートAPI設定",
 		"description": "オートコンプリート機能に使用するAPI設定を構成します。",

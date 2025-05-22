@@ -19,6 +19,15 @@
 			"mcp": "MCP Серверы"
 		}
 	},
+	"chat": {
+		"condense": {
+			"wantsToCondense": "Kilo Code хочет сократить твой разговор",
+			"condenseConversation": "Сократить разговор"
+		}
+	},
+	"newTaskPreview": {
+		"task": "Задача"
+	},
 	"autocompleteApiConfig": {
 		"title": "Конфигурация API автодополнения",
 		"description": "Настройте, какую конфигурацию API использовать для функции автодополнения.",
