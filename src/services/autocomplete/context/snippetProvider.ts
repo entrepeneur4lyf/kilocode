@@ -1,5 +1,10 @@
+import {
+	AutocompleteSnippetType,
+	type AutocompleteContextSnippet,
+	type AutocompleteSnippet,
+	type AutocompleteCodeSnippet,
+} from "../templating/snippetTypes"
 // src/services/autocomplete/context/snippetProvider.ts
-import { AutocompleteSnippet, AutocompleteSnippetType } from "../templating/snippetTypes"
 import { CodeContext, CodeContextDefinition } from "../ContextGatherer"
 import { PromptOptions } from "../PromptRenderer" // Use PromptOptions from PromptRenderer
 import { getUriPathBasename } from "../templating/uri"
@@ -20,24 +25,26 @@ export function generateAutocompleteSnippets(
 	const snippets: AutocompleteSnippet[] = []
 
 	if (options.includeImports) {
-		codeContext.imports.forEach((importStatement, index) => {
-			snippets.push({
+		const importSnippets = codeContext.imports.map(
+			(importStatement, index): AutocompleteContextSnippet => ({
 				type: AutocompleteSnippetType.Context,
 				content: importStatement,
 				filepath: `context://imports/${getUriPathBasename(currentFilepath)}#${index}`,
-			})
-		})
+			}),
+		)
+		snippets.push(...importSnippets)
 	}
 
 	if (options.includeDefinitions) {
-		codeContext.definitions.forEach((def: CodeContextDefinition) => {
-			snippets.push({
+		const definitionSnippets = codeContext.definitions.map(
+			(def: CodeContextDefinition): AutocompleteCodeSnippet => ({
 				type: AutocompleteSnippetType.Code,
 				filepath: def.filepath,
 				content: def.content,
 				// language: def.language // Language is not on CodeContextDefinition, derived from main file or filepath extension if needed by template
-			})
-		})
+			}),
+		)
+		snippets.push(...definitionSnippets)
 	}
 	return snippets
 }

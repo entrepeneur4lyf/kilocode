@@ -457,7 +457,6 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 			includeImports: useImports,
 			includeDefinitions: useDefinitions,
 			multilineCompletions: multilineCompletions as any, // Keep as any if type is complex or from external lib
-			// Use defaults from PromptRenderer for maxTokens and temperature as they are not in AutocompleteConfig
 			maxTokens: this.promptRenderer["defaultOptions"].maxTokens,
 			temperature: this.promptRenderer["defaultOptions"].temperature,
 		}
