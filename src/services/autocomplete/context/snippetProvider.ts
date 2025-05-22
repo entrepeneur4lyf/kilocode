@@ -1,9 +1,4 @@
-import {
-	AutocompleteSnippetType,
-	type AutocompleteContextSnippet,
-	type AutocompleteSnippet,
-	type AutocompleteCodeSnippet,
-} from "../templating/snippetTypes"
+import { AutocompleteSnippetType, type AutocompleteSnippet } from "../templating/snippetTypes"
 // src/services/autocomplete/context/snippetProvider.ts
 import { CodeContext, CodeContextDefinition } from "../ContextGatherer"
 import { PromptOptions } from "../PromptRenderer" // Use PromptOptions from PromptRenderer
@@ -26,7 +21,7 @@ export function generateAutocompleteSnippets(
 
 	if (options.includeImports) {
 		const importSnippets = codeContext.imports.map(
-			(importStatement, index): AutocompleteContextSnippet => ({
+			(importStatement, index): AutocompleteSnippet => ({
 				type: AutocompleteSnippetType.Context,
 				content: importStatement,
 				filepath: `context://imports/${getUriPathBasename(currentFilepath)}#${index}`,
@@ -37,7 +32,7 @@ export function generateAutocompleteSnippets(
 
 	if (options.includeDefinitions) {
 		const definitionSnippets = codeContext.definitions.map(
-			(def: CodeContextDefinition): AutocompleteCodeSnippet => ({
+			(def: CodeContextDefinition): AutocompleteSnippet => ({
 				type: AutocompleteSnippetType.Code,
 				filepath: def.filepath,
 				content: def.content,
