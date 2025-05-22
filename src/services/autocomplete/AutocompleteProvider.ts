@@ -482,7 +482,7 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		}
 
 		// Validate completion against selection context
-		if (!this.validateCompletionContext(context, document)) {
+		if (!this.validateCompletionContext(context, document, position)) {
 			// Make sure to clear the loading indicator if validation fails
 			const editor = vscode.window.activeTextEditor
 			if (editor && this.isLoadingCompletion) {
