@@ -1,6 +1,7 @@
 import { HTMLAttributes } from "react"
 import { useAppTranslation } from "@/i18n/TranslationContext"
 import { FlaskConical } from "lucide-react"
+import { ProviderSettings } from "@roo/shared/api" // kilocode_change
 
 import { EXPERIMENT_IDS, experimentConfigsMap, ExperimentId } from "@roo/shared/experiments"
 
@@ -14,6 +15,7 @@ import { ExperimentalFeature } from "./ExperimentalFeature"
 type ExperimentalSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	experiments: Record<ExperimentId, boolean>
 	setExperimentEnabled: SetExperimentEnabled
+	providerSettings: ProviderSettings // kilocode_change
 }
 
 export const ExperimentalSettings = ({
@@ -44,6 +46,7 @@ export const ExperimentalSettings = ({
 							onChange={(enabled) =>
 								setExperimentEnabled(EXPERIMENT_IDS[config[0] as keyof typeof EXPERIMENT_IDS], enabled)
 							}
+							isAvailable={config[1].isAvailable(props.providerSettings)} // kilocode_change
 						/>
 					))}
 			</Section>
