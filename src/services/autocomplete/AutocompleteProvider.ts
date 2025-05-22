@@ -181,7 +181,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 	): Promise<{ completion: string; isCancelled: boolean }> => {
 		let completion = ""
 		let isCancelled = false
-		const currentCompletionId = completionId
 		let firstLineComplete = false
 		let firstLine = ""
 		let remainingLines = ""
@@ -192,7 +191,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 
 		// Function to check if the request has been cancelled
 		const checkCancellation = () => {
-			if (activeCompletionId !== currentCompletionId) {
+			if (activeCompletionId !== completionId) {
 				isCancelled = true
 				return true
 			}
