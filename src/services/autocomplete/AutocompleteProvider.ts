@@ -6,7 +6,7 @@ import { ApiHandler, buildApiHandler } from "../../api"
 import { ContextGatherer } from "./ContextGatherer"
 import { PromptRenderer, PromptOptions } from "./PromptRenderer" // Imported PromptOptions
 import { CompletionCache } from "./utils/CompletionCache"
-import { generateAutocompleteSnippets } from "./context/snippetProvider" // Added import
+import { generateImportSnippets, generateDefinitionSnippets } from "./context/snippetProvider" // Added import
 
 // Default configuration values
 const DEFAULT_DEBOUNCE_DELAY = 150
@@ -462,7 +462,10 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		}
 
 		// Generate snippets
-		const snippets = generateAutocompleteSnippets(codeContext, promptOptions, document.uri.fsPath)
+		const snippets = [
+			...generateImportSnippets(promptOptions.includeImports, codeContext.imports, document.uri.fsPath),
+			...generateDefinitionSnippets(promptOptions.includeDefinitions, codeContext.definitions),
+		]
 
 		// Render prompts
 		const prompt = this.promptRenderer.renderPrompt(codeContext, snippets, promptOptions)
