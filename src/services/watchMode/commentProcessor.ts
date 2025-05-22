@@ -11,15 +11,26 @@ export class SearchTextNotUnique extends Error {
 	}
 }
 
-// Regular expressions for detecting KILO comments
-const AI_COMMENT_PATTERNS = [
+// Regular expressions for detecting AI comments
+const createAICommentPatterns = (prefix: string) => [
 	// For single line comments: // AI! do something
-	/\/\/\s*KILO!(.+)$/gm,
-	// For multi-line comments: /* KILO! do something */
-	/\/\*\s*KILO!(.+?)\*\//gms,
-	// For inline comments: /** KILO! do something */
-	/\/\*\*\s*KILO!(.+?)\*\//gms,
+	new RegExp(`\\/\\/\\s*${prefix}(.+)$`, "gm"),
+	// For multi-line comments: /* AI! do something */
+	new RegExp(`\\/\\*\\s*${prefix}(.+?)\\*\\/`, "gms"),
+	// For inline comments: /** AI! do something */
+	new RegExp(`\\/\\*\\*\\s*${prefix}(.+?)\\*\\/`, "gms"),
 ]
+
+// Default to "KILO!" if no prefix is provided
+let AI_COMMENT_PATTERNS = createAICommentPatterns("KILO!")
+
+/**
+ * Updates the AI comment patterns with a new prefix
+ * @param prefix The prefix to use for AI comments (e.g., "KILO!")
+ */
+export const updateAICommentPatterns = (prefix: string): void => {
+	AI_COMMENT_PATTERNS = createAICommentPatterns(prefix)
+}
 
 // Regular expression for detecting code blocks in AI responses
 const CODE_BLOCK_REGEX = /```(?:[\w-]*)\n([\s\S]*?)```/g
@@ -199,9 +210,25 @@ export const detectAIComments = (options: CommentProcessorOptions): CommentProce
  * Builds a prompt for the AI model based on the comment and its context
  * @param commentData The AI comment data
  */
+// Keep track of the current AI comment prefix for use in prompts
+let currentAICommentPrefix = "KILO!"
+
+/**
+ * Updates the current AI comment prefix used in prompts
+ * @param prefix The new prefix to use
+ */
+export const updateCurrentAICommentPrefix = (prefix: string): void => {
+	currentAICommentPrefix = prefix
+}
+
 export const buildAIPrompt = (commentData: AICommentData): string => {
 	const { content, context, fileUri } = commentData
 	const filePath = vscode.workspace.asRelativePath(fileUri)
+
+	// Extract the prefix without the exclamation mark for display in the prompt
+	const displayPrefix = currentAICommentPrefix.endsWith("!")
+		? currentAICommentPrefix.slice(0, -1)
+		: currentAICommentPrefix
 
 	// Create a prompt that includes system message and instructions for unified diff format
 	return `
@@ -211,13 +238,19 @@ You are Kilo Code, a highly skilled software engineer with extensive knowledge i
 
 ${content}
 
-Please make changes to the code shown below using unified diff format.
+I've written your instructions in comments in the code and marked them with "${displayPrefix}"
+You can see the "${displayPrefix}" comments shown below.
+Find them in the code files I've shared with you, and follow their instructions.
+
+After completing those instructions, also BE SURE to remove all the "${displayPrefix}" comments from the code too.
 
 # Code to modify
 
 \`\`\`
 ${context || "No context available"}
 \`\`\`
+
+Make changes to the code shown below using unified diff format.
 
 # Response format
 
@@ -254,6 +287,8 @@ Example format:
 \`\`\`
 
 If you need to explain your changes, please do so before or after the diff blocks.
+
+
 `.trim()
 }
 
@@ -1021,12 +1056,12 @@ export const processAIResponse = async (
 			return result
 		}
 
-		// First, remove the AI comment
+		// First, remove the comment
 		// const commentEdit = new vscode.WorkspaceEdit()
 		// const commentRange = new vscode.Range(commentData.startPos, commentData.endPos)
 		// commentEdit.delete(document.uri, commentRange)
 		// await vscode.workspace.applyEdit(commentEdit)
-		console.log("[WatchMode DEBUG] Removed AI comment")
+		console.log("[WatchMode DEBUG] Removed comment")
 
 		// Apply all edits to the document
 		const documentContent = document.getText()

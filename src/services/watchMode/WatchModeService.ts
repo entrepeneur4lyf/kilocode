@@ -6,7 +6,13 @@ import { WatchModeUI } from "./ui"
 import { ApiHandler, buildApiHandler } from "../../api"
 import { ContextProxy } from "../../core/config/ContextProxy"
 import { writePromptToDebugFile, writePromptResponseToDebugFile } from "./PromptDebugger"
-import { detectAIComments, buildAIPrompt, processAIResponse } from "./commentProcessor"
+import {
+	detectAIComments,
+	buildAIPrompt,
+	processAIResponse,
+	updateAICommentPatterns,
+	updateCurrentAICommentPrefix,
+} from "./commentProcessor"
 import { WatchModeHighlighter } from "./WatchModeHighlighter"
 
 /**
@@ -45,6 +51,7 @@ export class WatchModeService {
 		exclude: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**"],
 		model: "claude-3.7",
 		debounceTime: 2000, // 2 seconds
+		commentPrefix: "KILO!", // Default AI comment prefix
 	}
 	private config: WatchModeConfig
 
@@ -57,7 +64,7 @@ export class WatchModeService {
 		private readonly context: vscode.ExtensionContext,
 		outputChannel?: vscode.OutputChannel,
 	) {
-		console.log("👀👀👀 Kilo WatchMode experiment active!")
+		this.log("Kilo WatchMode experiment active")
 
 		this.outputChannel = outputChannel
 		this.config = this.defaultConfig
@@ -65,8 +72,6 @@ export class WatchModeService {
 		this.highlighter = new WatchModeHighlighter()
 
 		this.setupApiHandler()
-
-		// Use the real keys from kilocode config
 
 		// Listen to our own events to update the UI
 		this.onDidChangeActiveState((isActive) => {
@@ -79,7 +84,6 @@ export class WatchModeService {
 		})
 
 		this.onDidFinishProcessingComment(({ fileUri, success }) => {
-			// comment is unused but required for type matching
 			this.processingFiles.delete(fileUri.toString())
 
 			if (this.processingFiles.size === 0) {
@@ -120,7 +124,6 @@ export class WatchModeService {
 	private isExperimentEnabled(): boolean {
 		const experimentsConfig = (this.context.globalState.get("experiments") || {}) as Record<ExperimentId, boolean>
 		const isEnabled = experiments.isEnabled(experimentsConfig, EXPERIMENT_IDS.WATCH_MODE)
-		this.log(`Watch mode experiment config: ${JSON.stringify(experimentsConfig)}`)
 		this.log(`Watch mode experiment enabled: ${isEnabled}`)
 		return isEnabled
 	}
@@ -136,7 +139,18 @@ export class WatchModeService {
 			exclude: config.get("exclude", this.defaultConfig.exclude),
 			model: config.get("model", this.defaultConfig.model),
 			debounceTime: config.get("debounceTime", this.defaultConfig.debounceTime),
+			commentPrefix: config.get("commentPrefix", this.defaultConfig.commentPrefix),
 		}
+
+		// Update the AI comment patterns with the configured prefix
+		const { commentPrefix } = this.config
+		this.log(`Using AI comment prefix: ${commentPrefix}`)
+
+		// Use the imported functions from commentProcessor
+
+		// Update the patterns and prefix
+		updateAICommentPatterns(commentPrefix)
+		updateCurrentAICommentPrefix(commentPrefix)
 	}
 
 	/**
@@ -185,8 +199,6 @@ export class WatchModeService {
 	private handleFileChange(data: FileChangeData): void {
 		const { fileUri } = data
 
-		this.log(`Handling file change for: ${fileUri.toString()}`)
-
 		// Skip excluded files
 		if (this.isFileExcluded(fileUri)) {
 			this.log(`File excluded: ${fileUri.toString()}`)
@@ -201,7 +213,7 @@ export class WatchModeService {
 			this.pendingProcessing.delete(fileKey)
 		}
 
-		this.log(`Scheduling file processing with ${this.config.debounceTime}ms debounce: ${fileKey}`)
+		this.log(`Scheduling processing for ${fileKey} with ${this.config.debounceTime}ms debounce`)
 
 		const timeout = setTimeout(async () => {
 			this.log(`Debounce complete, processing file: ${fileKey}`)
@@ -218,7 +230,6 @@ export class WatchModeService {
 	 */
 	private isFileExcluded(uri: vscode.Uri): boolean {
 		const relativePath = vscode.workspace.asRelativePath(uri)
-		this.log(`Checking if file is excluded: ${relativePath}`)
 
 		// Convert glob patterns to proper regex patterns
 		const isExcluded = this.config.exclude.some((pattern) => {
@@ -232,7 +243,7 @@ export class WatchModeService {
 			const result = regExp.test(relativePath)
 
 			if (result) {
-				this.log(`File matched exclude pattern: ${pattern}`)
+				this.log(`File excluded: matched pattern ${pattern}`)
 			}
 
 			return result
@@ -247,12 +258,11 @@ export class WatchModeService {
 	 */
 	private async processFile(fileUri: vscode.Uri): Promise<void> {
 		try {
-			this.log(`Starting to process file: ${fileUri.fsPath}`)
+			this.log(`Processing file: ${fileUri.fsPath}`)
 
 			// Read the file content
 			const document = await vscode.workspace.openTextDocument(fileUri)
 			const content = document.getText()
-			this.log(`File opened, content length: ${content.length} bytes, language: ${document.languageId}`)
 
 			// Skip processing if file is too large
 			if (content.length > 1000000) {
@@ -261,10 +271,7 @@ export class WatchModeService {
 				return
 			}
 
-			this.log(`Processing file: ${fileUri.fsPath}`)
-
 			// Detect AI comments in the file
-			this.log(`Detecting AI comments in file: ${fileUri.fsPath}`)
 			const result = detectAIComments({
 				fileUri,
 				content,
@@ -297,81 +304,61 @@ export class WatchModeService {
 	}
 
 	private async processAIComment(document: vscode.TextDocument, comment: AICommentData): Promise<void> {
-		this.log("=== DEBUGGING: processAIComment START ===")
-		console.log("[WatchMode DEBUG] processAIComment started")
-
 		try {
 			this.log(
 				`Processing AI comment: "${comment.content.substring(0, 50)}${comment.content.length > 50 ? "..." : ""}"`,
 			)
-			console.log("[WatchMode DEBUG] Processing comment:", comment.content.substring(0, 100))
 
 			// Highlight the AI comment with animation
 			const clearHighlight = this.highlighter.highlightAICommentWithAnimation(document, comment)
-			this.log("Comment highlighted with animation in editor")
 
 			// Emit event that we're starting to process this comment
 			this._onDidStartProcessingComment.fire({ fileUri: document.uri, comment })
-			this.log("Fired onDidStartProcessingComment event")
 
 			// Build prompt from the comment and context
 			this.log("Building AI prompt...")
 			const prompt = buildAIPrompt(comment)
 			this.log(`Prompt built, length: ${prompt.length} characters`)
-			console.log("[WatchMode DEBUG] Prompt built, length:", prompt.length)
 
 			// Get response from AI model
 			this.log("Calling AI model...")
-			console.log("[WatchMode DEBUG] About to call AI model")
 
 			let apiResponse: string | null = null
 			try {
 				apiResponse = await this.callAIModel(prompt)
 				this.log(`API response received, length: ${apiResponse?.length || 0} characters`)
-				console.log("[WatchMode DEBUG] API response received, length:", apiResponse?.length || 0)
-
-				if (apiResponse) {
-					console.log("[WatchMode DEBUG] API response preview:", apiResponse.substring(0, 100))
-				}
 			} catch (apiError) {
 				this.log(`Error calling AI model: ${apiError instanceof Error ? apiError.message : String(apiError)}`)
-				console.error("[WatchMode DEBUG] Error calling AI model:", apiError)
 				apiResponse = null
 			}
 
 			if (!apiResponse) {
 				this.log("No response from AI model")
-				console.error("[WatchMode DEBUG] No response from AI model")
 				this._onDidFinishProcessingComment.fire({
 					fileUri: document.uri,
 					comment,
 					success: false,
 				})
 				clearHighlight()
-				this.log("=== DEBUGGING: processAIComment END (no response) ===")
 				return
 			}
 
 			// Process the AI response
 			this.log("Processing AI response...")
-			console.log("[WatchMode DEBUG] Processing AI response")
 			let success = false
 			try {
 				success = await processAIResponse(document, comment, apiResponse)
 				this.log(`Response processed, success: ${success}`)
-				console.log("[WatchMode DEBUG] Response processed, success:", success)
 			} catch (processError) {
 				this.log(
 					`Error processing response: ${processError instanceof Error ? processError.message : String(processError)}`,
 				)
-				console.error("[WatchMode DEBUG] Error processing response:", processError)
 				this._onDidFinishProcessingComment.fire({
 					fileUri: document.uri,
 					comment,
 					success: false,
 				})
 				clearHighlight()
-				this.log("=== DEBUGGING: processAIComment END (process error) ===")
 				return
 			}
 
@@ -390,16 +377,13 @@ export class WatchModeService {
 
 			// Clear the highlight
 			clearHighlight()
-			this.log("=== DEBUGGING: processAIComment END ===")
 		} catch (error) {
 			this.log(`Error processing AI comment: ${error instanceof Error ? error.message : String(error)}`)
-			console.error("[WatchMode DEBUG] Error in processAIComment:", error)
 			this._onDidFinishProcessingComment.fire({
 				fileUri: document.uri,
 				comment,
 				success: false,
 			})
-			this.log("=== DEBUGGING: processAIComment END (with error) ===")
 		}
 	}
 
@@ -408,22 +392,16 @@ export class WatchModeService {
 	 * @param prompt The prompt to send to the AI model
 	 */
 	private async callAIModel(prompt: string): Promise<string> {
-		this.log("=== DEBUGGING: callAIModel START ===")
-		this.log(`Prompt length: ${prompt.length} characters`)
-		console.log(`[WatchMode DEBUG] callAIModel called with prompt length: ${prompt.length}`)
+		this.log(`Calling AI model with prompt length: ${prompt.length} characters`)
 
 		try {
 			// Get the API handler from the extension
-			this.log("Attempting to get API handler...")
 			if (!this.apiHandler) {
 				throw new Error("this.apiHandler not available")
 			}
 
-			// Log API handler details
-			this.log(`API handler model: ${this.apiHandler?.getModel()?.id || "unknown"}`)
-
 			// Call the model with the prompt using the streaming API
-			this.log(`Using model: ${this.config.model}`)
+			this.log(`Using model: ${this.config.model || this.apiHandler?.getModel()?.id || "unknown"}`)
 
 			// Create a system message and a user message with the prompt
 			const systemPrompt =
@@ -434,7 +412,6 @@ export class WatchModeService {
 			this.currentDebugId = writePromptToDebugFile(systemPrompt, JSON.stringify(messages, null, 2))
 
 			this.log("Creating message stream...")
-			console.log("[WatchMode DEBUG] About to call createMessage on API handler")
 
 			// Use the streaming API to get the response
 			let fullResponse = ""
@@ -444,41 +421,30 @@ export class WatchModeService {
 			try {
 				const messageStream = this.apiHandler?.createMessage(systemPrompt, messages)
 				this.log("Message stream created successfully")
-				console.log("[WatchMode DEBUG] Message stream created successfully")
 
 				for await (const chunk of messageStream) {
 					chunkCount++
 					if (chunk.type === "text") {
 						fullResponse += chunk.text
-						if (chunkCount % 10 === 0) {
-							this.log(`Response so far (${fullResponse.length} chars)`)
-						}
 					}
 				}
 
 				this.log(
 					`Stream complete. Received ${chunkCount} chunks, total response length: ${fullResponse.length}`,
 				)
-				console.log(
-					`[WatchMode DEBUG] Stream complete. Received ${chunkCount} chunks, total response length: ${fullResponse.length}`,
-				)
 
 				// Write the response to debug file using the same debug ID
 				writePromptResponseToDebugFile(fullResponse, this.currentDebugId)
 			} catch (streamError) {
-				console.error("[WatchMode DEBUG] Error in stream processing:", streamError)
 				this.log(
 					`Error processing stream: ${streamError instanceof Error ? streamError.message : String(streamError)}`,
 				)
 				throw streamError
 			}
 
-			this.log("=== DEBUGGING: callAIModel END ===")
 			return fullResponse
 		} catch (error) {
-			console.error("[WatchMode DEBUG] Error in callAIModel:", error)
 			this.log(`Error in callAIModel: ${error instanceof Error ? error.message : String(error)}`)
-			this.log("=== DEBUGGING: callAIModel END (with error) ===")
 			throw error
 		}
 	}

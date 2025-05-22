@@ -83,8 +83,8 @@ export class WatchModeUI {
 			return
 		}
 
-		this.processingStatusBarItem.text = `$(sync~spin) Processing AI comments${fileCount > 1 ? ` (${fileCount})` : ""}`
-		this.processingStatusBarItem.tooltip = "Kilo Code is processing AI comments in your files"
+		this.processingStatusBarItem.text = `$(sync~spin) Processing comments${fileCount > 1 ? ` (${fileCount})` : ""}`
+		this.processingStatusBarItem.tooltip = "Kilo Code is processing comments in your files"
 		this.processingStatusBarItem.show()
 	}
 
@@ -116,7 +116,7 @@ export class WatchModeUI {
 		const fileName = filePath.split("/").pop() || filePath
 
 		vscode.window.showInformationMessage(
-			`AI Watch Mode: Processed ${commentCount} comment${commentCount !== 1 ? "s" : ""} in ${fileName}`,
+			`Watch Mode: Processed ${commentCount} comment${commentCount !== 1 ? "s" : ""} in ${fileName}`,
 			{ modal: false },
 		)
 	}
@@ -130,7 +130,7 @@ export class WatchModeUI {
 			return
 		}
 
-		vscode.window.showErrorMessage(`AI Watch Mode Error: ${message}`, { modal: false })
+		vscode.window.showErrorMessage(`Watch Mode Error: ${message}`, { modal: false })
 	}
 
 	/**
