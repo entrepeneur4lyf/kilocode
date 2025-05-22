@@ -32,23 +32,19 @@ export const generateImportSnippets = (
 	includeImports: boolean,
 	currentFilepath: string,
 ): AutocompleteContextSnippet[] =>
-	includeImports
-		? imports.map((importStatement, index) => ({
-				type: AutocompleteSnippetType.Context,
-				content: importStatement,
-				filepath: `context://imports/${getUriPathBasename(currentFilepath)}#${index}`,
-			}))
-		: []
+	(includeImports ? imports : []).map((importStatement, index) => ({
+		type: AutocompleteSnippetType.Context,
+		content: importStatement,
+		filepath: `context://imports/${getUriPathBasename(currentFilepath)}#${index}`,
+	}))
 
 export const generateDefinitionSnippets = (
 	definitions: CodeContextDefinition[],
 	includeDefinitions: boolean,
 ): AutocompleteCodeSnippet[] =>
-	includeDefinitions
-		? definitions.map((def: CodeContextDefinition) => ({
-				type: AutocompleteSnippetType.Code,
-				filepath: def.filepath,
-				content: def.content,
-				// language: def.language // Language is not on CodeContextDefinition, derived from main file or filepath extension if needed by template
-			}))
-		: []
+	(includeDefinitions ? definitions : []).map((def) => ({
+		type: AutocompleteSnippetType.Code,
+		filepath: def.filepath,
+		content: def.content,
+		// language: def.language // Language is not on CodeContextDefinition, derived from main file or filepath extension if needed by template
+	}))
