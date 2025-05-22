@@ -39,7 +39,7 @@ export class PromptRenderer {
 		includeDefinitions: true,
 		multilineCompletions: "auto",
 	}
-	private modelName: string = "qwen2.5-coder:1.5b" // AIDIFF: Default model name
+	private modelName: string // AIDIFF: Default model name
 
 	/**
 	 * Create a new prompt renderer
@@ -94,7 +94,6 @@ export class PromptRenderer {
 			? getUriPathBasename(workspaceFolders[0].uri.fsPath)
 			: "my-repository" // AIDIFF: Default reponame
 		const workspaceUris = workspaceFolders?.map((folder) => folder.uri.toString()) || []
-
 
 		// PLANREF: continue/core/autocomplete/templating/index.ts (compilePrefixSuffix logic)
 		if (currentTemplate.compilePrefixSuffix) {
