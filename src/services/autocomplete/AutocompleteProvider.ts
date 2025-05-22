@@ -101,17 +101,14 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		editor.setDecorations(streamingDecorationType, [decoration])
 	}
 
-	const cleanMarkdownCodeBlocks = (text: string): string => {
-		// Handle complete code blocks
-		return text
-			.replace(/```[\w-]*\n([\s\S]*?)\n```/g, "$1")
+	const cleanMarkdownCodeBlocks = (text: string): string =>
+		text
+			.replace(/```[\w-]*\n([\s\S]*?)\n```/g, "$1") // Handle complete code blocks
 			.replace(/^```[\w-]*\n/g, "") // Handle opening code block markers at the beginning of a chunk
 			.replace(/\n```[\w-]*\n/g, "\n") // Handle opening code block markers in the middle of a chunk
 			.replace(/\n```$/g, "") // Handle closing code block markers
 			.replace(/```[\w-]*$/g, "") // Handle any remaining backticks that might be part of incomplete code blocks
 			.trim() // Trim any leading/trailing whitespace that might be left over
-	}
-
 	const isFileDisabled = (document: vscode.TextDocument): boolean => {
 		const vscodeConfig = vscode.workspace.getConfiguration("kilo-code")
 		const disabledPatterns = vscodeConfig.get<string>("autocomplete.disableInFiles") || ""
