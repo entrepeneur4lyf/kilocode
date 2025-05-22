@@ -2,6 +2,7 @@
 import Handlebars from "handlebars"
 
 import { AutocompleteLanguageInfo } from "../AutocompleteLanguageInfo"
+import { AutocompleteSnippet } from "./snippetTypes" // Added import for AutocompleteSnippet
 
 import { AutocompleteTemplate, getTemplateForModel } from "./AutocompleteTemplate"
 import { getStopTokens } from "./getStopTokens"
@@ -33,7 +34,15 @@ function renderStringTemplate(
 	})
 }
 
-export function renderPrompt({ workspaceDirs, helper }: { workspaceDirs: string[]; helper: HelperVars }): {
+export function renderPrompt({
+	workspaceDirs,
+	helper,
+	snippets,
+}: {
+	workspaceDirs: string[]
+	helper: HelperVars
+	snippets: AutocompleteSnippet[] // Added snippets parameter
+}): {
 	prompt: string
 	prefix: string
 	suffix: string
@@ -50,10 +59,19 @@ export function renderPrompt({ workspaceDirs, helper }: { workspaceDirs: string[
 
 	const { template, compilePrefixSuffix, completionOptions } = getTemplate(helper)
 
+	// const snippets = undefined //TODO: get snippets here somehow. // This line is now replaced by the parameter
+
 	// Some models have prompts that need two passes. This lets us pass the compiled prefix/suffix
 	// into either the 2nd template to generate a raw string, or to pass prefix, suffix to a FIM endpoint
 	if (compilePrefixSuffix) {
-		;[prefix, suffix] = compilePrefixSuffix(prefix, suffix, helper.filepath, reponame, [], helper.workspaceUris)
+		;[prefix, suffix] = compilePrefixSuffix(
+			prefix,
+			suffix,
+			helper.filepath,
+			reponame,
+			snippets,
+			helper.workspaceUris,
+		)
 	} else {
 		prefix = [prefix].join("\n")
 	}
@@ -62,7 +80,7 @@ export function renderPrompt({ workspaceDirs, helper }: { workspaceDirs: string[
 		// Templates can be passed as a Handlebars template string or a function
 		typeof template === "string"
 			? renderStringTemplate(template, prefix, suffix, helper.lang, helper.filepath, reponame)
-			: template(prefix, suffix, helper.filepath, reponame, helper.lang.name, [], helper.workspaceUris)
+			: template(prefix, suffix, helper.filepath, reponame, helper.lang.name, snippets, helper.workspaceUris)
 
 	const stopTokens = getStopTokens(completionOptions, helper.lang, helper.modelName)
 

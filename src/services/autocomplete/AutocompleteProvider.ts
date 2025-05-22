@@ -4,8 +4,9 @@ import * as vscode from "vscode"
 import { AutocompleteConfig } from "./AutocompleteConfig"
 import { ApiHandler, buildApiHandler } from "../../api"
 import { ContextGatherer } from "./ContextGatherer"
-import { PromptRenderer } from "./PromptRenderer"
+import { PromptRenderer, PromptOptions } from "./PromptRenderer" // Imported PromptOptions
 import { CompletionCache } from "./utils/CompletionCache"
+import { generateAutocompleteSnippets } from "./context/snippetProvider" // Added import
 
 // Default configuration values
 const DEFAULT_DEBOUNCE_DELAY = 150
@@ -450,13 +451,22 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		// Gather context
 		const codeContext = await this.contextGatherer.gatherContext(document, position, useImports, useDefinitions)
 
-		// Render prompts
-		const prompt = this.promptRenderer.renderPrompt(codeContext, {
+		// Define options for snippet generation and prompt rendering
+		const promptOptions: PromptOptions = {
 			language: document.languageId,
 			includeImports: useImports,
 			includeDefinitions: useDefinitions,
-			multilineCompletions: multilineCompletions as any,
-		})
+			multilineCompletions: multilineCompletions as any, // Keep as any if type is complex or from external lib
+			// Use defaults from PromptRenderer for maxTokens and temperature as they are not in AutocompleteConfig
+			maxTokens: this.promptRenderer["defaultOptions"].maxTokens,
+			temperature: this.promptRenderer["defaultOptions"].temperature,
+		}
+
+		// Generate snippets
+		const snippets = generateAutocompleteSnippets(codeContext, promptOptions, document.uri.fsPath)
+
+		// Render prompts
+		const prompt = this.promptRenderer.renderPrompt(codeContext, snippets, promptOptions)
 		const systemPrompt = this.promptRenderer.renderSystemPrompt()
 
 		// Setup cancellation

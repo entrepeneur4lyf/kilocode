@@ -110,7 +110,7 @@ describe("PromptRenderer", () => {
 		}
 		;(getTemplateForModel as jest.Mock).mockReturnValue(mockTemplate)
 
-		const result = promptRenderer.renderPrompt(basicCodeContext)
+		const result = promptRenderer.renderPrompt(basicCodeContext, []) // Added empty array for snippets
 
 		expect(getTemplateForModel).toHaveBeenCalledWith(mockDefaultModel)
 		expect(result.prompt).toBe(
@@ -136,7 +136,7 @@ describe("PromptRenderer", () => {
 		}
 		;(getTemplateForModel as jest.Mock).mockReturnValue(mockTemplate)
 
-		promptRenderer.renderPrompt(basicCodeContext)
+		promptRenderer.renderPrompt(basicCodeContext, []) // Added empty array for snippets
 		expect(mockTemplateFn).toHaveBeenCalledWith(
 			"function greet() {\n  // A comment\n  const x = 1", // prefix
 			"\n  return x;\n}", // suffix
@@ -156,7 +156,10 @@ describe("PromptRenderer", () => {
 		;(getTemplateForModel as jest.Mock).mockReturnValue(mockTemplate)
 		;(getLanguageInfo as jest.Mock).mockReturnValue(mockPythonLangInfo)
 
-		const result = promptRenderer.renderPrompt(codeContextWithImports, { includeImports: true, language: "python" })
+		const result = promptRenderer.renderPrompt(codeContextWithImports, [], {
+			includeImports: true,
+			language: "python",
+		}) // Added empty array for snippets
 		expect(result.prefix).toContain('// Path: file.ts\nimport fs from "fs";') // Assuming default filename from setup
 		expect(result.prefix).toContain('// Path: file.ts\nimport path from "path";')
 		expect(result.prefix).toContain("function greet() {\n  // A comment\n  const x = 1")
@@ -169,7 +172,7 @@ describe("PromptRenderer", () => {
 		}
 		;(getTemplateForModel as jest.Mock).mockReturnValue(mockTemplate)
 
-		const result = promptRenderer.renderPrompt(codeContextWithDefinitions, { includeDefinitions: true })
+		const result = promptRenderer.renderPrompt(codeContextWithDefinitions, [], { includeDefinitions: true }) // Added empty array for snippets
 		expect(result.prefix).toContain("// Path: math.ts\nexport function add(a, b) {\n  return a + b;\n}")
 		expect(result.prefix).toContain('// Path: string.ts\nexport const GREETING = "Hello";')
 		expect(result.prefix).toContain("function greet() {\n  // A comment\n  const x = 1")
@@ -187,7 +190,7 @@ describe("PromptRenderer", () => {
 		}
 		;(getTemplateForModel as jest.Mock).mockReturnValue(mockTemplate)
 
-		const result = promptRenderer.renderPrompt(basicCodeContext)
+		const result = promptRenderer.renderPrompt(basicCodeContext, []) // Added empty array for snippets
 		expect(mockCompileFn).toHaveBeenCalled()
 		expect(result.prefix).toBe("COMPILED: function greet() {\n  // A comment\n  const x = 1")
 		expect(result.suffix).toBe("COMPILED_SUFFIX: \n  return x;\n}")
@@ -201,7 +204,7 @@ describe("PromptRenderer", () => {
 		const mockTemplate: AutocompleteTemplate = { template: "{{{prefix}}}---{{{suffix}}}", completionOptions: {} }
 		;(getTemplateForModel as jest.Mock).mockReturnValue(mockTemplate)
 
-		const result = promptRenderer.renderPrompt(contextWithoutFollowing)
+		const result = promptRenderer.renderPrompt(contextWithoutFollowing, []) // Added empty array for snippets
 		expect(result.suffix).toBe("\n")
 		expect(result.prompt).toContain("---") // Ensure suffix was actually part of template
 		expect(result.prompt.endsWith("---\n")).toBe(true)
@@ -216,7 +219,7 @@ describe("PromptRenderer", () => {
 		}
 		;(getTemplateForModel as jest.Mock).mockReturnValue(mockTemplate)
 
-		const result = promptRenderer.renderPrompt(basicCodeContext)
+		const result = promptRenderer.renderPrompt(basicCodeContext, []) // Added empty array for snippets
 		expect(result.prompt).toBe("File: untitled.txt Repo: my-repository")
 	})
 

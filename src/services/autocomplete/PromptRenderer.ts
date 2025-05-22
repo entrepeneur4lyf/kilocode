@@ -1,13 +1,13 @@
 // AIDIFF: Integrating continue/ templating logic
 // PLANREF: continue/core/autocomplete/templating/index.ts
-import { CodeContext, CodeContextDefinition } from "./ContextGatherer"
+import { CodeContext } from "./ContextGatherer" // Removed CodeContextDefinition
 import { AutocompleteTemplate, getTemplateForModel } from "./templating/AutocompleteTemplate" // AIDIFF: AutocompleteTemplate is used by getTemplateForModel
 import { getStopTokens } from "./templating/getStopTokens"
 import * as vscode from "vscode"
 import { AutocompleteLanguageInfo, getLanguageInfo } from "./AutocompleteLanguageInfo" // AIDIFF: AutocompleteLanguageInfo is used by getLanguageInfo
 import {
 	AutocompleteSnippet,
-	AutocompleteSnippetType,
+	// AutocompleteSnippetType, // Removed AutocompleteSnippetType
 	// AIDIFF: Specific snippet types like AutocompleteCodeSnippet are not directly instantiated here after changes,
 	// but AutocompleteSnippet union type is used.
 } from "./templating/snippetTypes"
@@ -61,6 +61,7 @@ export class PromptRenderer {
 	// PLANREF: Main structure mirrors continue/core/autocomplete/templating/index.ts (renderPrompt function)
 	renderPrompt(
 		context: CodeContext,
+		snippets: AutocompleteSnippet[], // Added snippets parameter
 		options: Partial<PromptOptions> = {},
 	): {
 		prompt: string
@@ -95,30 +96,8 @@ export class PromptRenderer {
 			: "my-repository" // AIDIFF: Default reponame
 		const workspaceUris = workspaceFolders?.map((folder) => folder.uri.toString()) || []
 
-		// PLANREF: continue/core/autocomplete/templating/index.ts (calls getSnippets)
-		// AIDIFF: Simplified snippet creation directly from CodeContext.
-		// continue/ has a more complex getSnippets and SnippetPayload system which is not fully replicated here.
-		const snippets: AutocompleteSnippet[] = []
-		if (mergedOptions.includeImports && context.imports.length > 0) {
-			context.imports.forEach((importStatement, index) => {
-				snippets.push({
-					type: AutocompleteSnippetType.Context, // AIDIFF: Using Context type for imports
-					content: importStatement,
-					// AIDIFF: Providing a more structured, albeit placeholder, filepath for context snippets.
-					filepath: `context://imports/${getUriPathBasename(filepath)}#${index}`,
-				})
-			})
-		}
-		if (mergedOptions.includeDefinitions && context.definitions.length > 0) {
-			context.definitions.forEach((def: CodeContextDefinition) => {
-				snippets.push({
-					type: AutocompleteSnippetType.Code, // AIDIFF: Definitions are Code snippets
-					filepath: def.filepath,
-					content: def.content,
-					// language: def.language // Language is not on CodeContextDefinition, derived from main file or filepath extension if needed by template
-				})
-			})
-		}
+		// Snippet generation is now handled externally and passed in.
+		// const snippets: AutocompleteSnippet[] = [] // Removed inline snippet generation
 
 		// PLANREF: continue/core/autocomplete/templating/index.ts (compilePrefixSuffix logic)
 		if (currentTemplate.compilePrefixSuffix) {
