@@ -691,10 +691,10 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 				}
 				if (previewState.isShowingAutocompletePreview) {
 					await vscode.commands.executeCommand("kilo-code.acceptAutocompletePreview")
-					return
+				} else {
+					// not sure if this is needed: leaving it here for now
+					await vscode.commands.executeCommand("default:editor.action.inlineSuggest.commit")
 				}
-
-				await vscode.commands.executeCommand("default:editor.action.inlineSuggest.commit")
 			}),
 		)
 
