@@ -34,12 +34,7 @@ function renderStringTemplate(
 	})
 }
 
-function fib(n: number): number {
-    if (n <= 1) {
-        return n;
-    }
-    return fib(n - 1) + fib(n - 2);
-}
+// AI! write a fib fn below
 
 export function renderPrompt({ workspaceDirs, helper }: { workspaceDirs: string[]; helper: HelperVars }): {
 	prompt: string
