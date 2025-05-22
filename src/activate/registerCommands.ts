@@ -203,7 +203,7 @@ const getCommandsMap = ({ context, outputChannel, watchModeService }: RegisterCo
 			})
 		},
 		// kilocode_change end
-		
+
 		// Watch Mode commands
 		"kilo-code.watchMode.enable": () => {
 			if (!watchModeService) {
@@ -211,7 +211,7 @@ const getCommandsMap = ({ context, outputChannel, watchModeService }: RegisterCo
 				vscode.window.showErrorMessage("Watch Mode service not initialized")
 				return
 			}
-			
+
 			const success = watchModeService.enable()
 			if (success) {
 				vscode.window.showInformationMessage("Watch Mode enabled")
@@ -224,7 +224,7 @@ const getCommandsMap = ({ context, outputChannel, watchModeService }: RegisterCo
 				outputChannel.appendLine("Watch Mode service not initialized")
 				return
 			}
-			
+
 			watchModeService.disable()
 			vscode.window.showInformationMessage("Watch Mode disabled")
 		},
@@ -234,10 +234,34 @@ const getCommandsMap = ({ context, outputChannel, watchModeService }: RegisterCo
 				vscode.window.showErrorMessage("Watch Mode service not initialized")
 				return
 			}
-			
+
 			const isActive = watchModeService.toggle()
 			vscode.window.showInformationMessage(`Watch Mode ${isActive ? "enabled" : "disabled"}`)
-		}
+		},
+		"kilo-code.watchMode.enableExperiment": async () => {
+			if (!watchModeService) {
+				outputChannel.appendLine("Watch Mode service not initialized")
+				vscode.window.showErrorMessage("Watch Mode service not initialized")
+				return
+			}
+
+			// Enable the experiment flag
+			const experimentsConfig = (context.globalState.get("experiments") || {}) as Record<string, boolean>
+			experimentsConfig["watchMode"] = true
+			await context.globalState.update("experiments", experimentsConfig)
+
+			outputChannel.appendLine("Watch Mode experiment flag enabled")
+			vscode.window.showInformationMessage("Watch Mode experiment flag enabled. Please restart the service.")
+
+			// Restart the service
+			watchModeService.stop()
+			const success = watchModeService.start()
+			if (success) {
+				vscode.window.showInformationMessage("Watch Mode service restarted successfully")
+			} else {
+				vscode.window.showErrorMessage("Failed to restart Watch Mode service")
+			}
+		},
 	}
 }
 

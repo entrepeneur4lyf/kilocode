@@ -71,3 +71,8 @@ export interface WatchModeConfig {
 	/** Debounce time in milliseconds */
 	debounceTime: number
 }
+
+/**
+ * Type for API handler factory function
+ */
+export type ApiHandlerFactory = () => Promise<any>
