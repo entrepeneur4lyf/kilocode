@@ -109,6 +109,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			.replace(/\n```$/g, "") // Handle closing code block markers
 			.replace(/```[\w-]*$/g, "") // Handle any remaining backticks that might be part of incomplete code blocks
 			.trim() // Trim any leading/trailing whitespace that might be left over
+
 	const isFileDisabled = (document: vscode.TextDocument): boolean => {
 		const vscodeConfig = vscode.workspace.getConfiguration("kilo-code")
 		const disabledPatterns = vscodeConfig.get<string>("autocomplete.disableInFiles") || ""
