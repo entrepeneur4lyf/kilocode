@@ -252,8 +252,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 								remainingLinesPreview = currentRemainingLines
 							} else {
 								// If first line isn't complete yet, store everything
-								const cleanedText = cleanMarkdownCodeBlocks(completion)
-								firstLinePreview = cleanedText
+								firstLinePreview = cleanMarkdownCodeBlocks(completion)
 								remainingLinesPreview = ""
 							}
 
