@@ -24,29 +24,27 @@ export function generateAutocompleteSnippets(
 ): AutocompleteSnippet[] {
 	const snippets: AutocompleteSnippet[] = []
 
-	snippets.push(
-		...(options.includeImports
-			? codeContext.imports.map(
-					(importStatement, index): AutocompleteContextSnippet => ({
-						type: AutocompleteSnippetType.Context,
-						content: importStatement,
-						filepath: `context://imports/${getUriPathBasename(currentFilepath)}#${index}`,
-					}),
-				)
-			: []),
-	)
+	const contextSnippets = options.includeImports
+		? codeContext.imports.map(
+				(importStatement, index): AutocompleteContextSnippet => ({
+					type: AutocompleteSnippetType.Context,
+					content: importStatement,
+					filepath: `context://imports/${getUriPathBasename(currentFilepath)}#${index}`,
+				}),
+			)
+		: []
+	snippets.push(...contextSnippets)
 
-	snippets.push(
-		...(options.includeDefinitions
-			? codeContext.definitions.map(
-					(def: CodeContextDefinition): AutocompleteCodeSnippet => ({
-						type: AutocompleteSnippetType.Code,
-						filepath: def.filepath,
-						content: def.content,
-						// language: def.language // Language is not on CodeContextDefinition, derived from main file or filepath extension if needed by template
-					}),
-				)
-			: []),
-	)
+	const definitionSnippets = options.includeDefinitions
+		? codeContext.definitions.map(
+				(def: CodeContextDefinition): AutocompleteCodeSnippet => ({
+					type: AutocompleteSnippetType.Code,
+					filepath: def.filepath,
+					content: def.content,
+					// language: def.language // Language is not on CodeContextDefinition, derived from main file or filepath extension if needed by template
+				}),
+			)
+		: []
+	snippets.push(...definitionSnippets)
 	return snippets
 }
