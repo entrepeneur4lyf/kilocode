@@ -15,7 +15,37 @@ const DEFAULT_MODEL = "mistralai/codestral-2501" // or google/gemini-2.5-flash-p
 const MIN_TYPED_LENGTH_FOR_COMPLETION = 4
 const AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY = "kilo-code.autocompletePreviewVisible"
 
-export class AutocompleteProvider implements vscode.InlineCompletionItemProvider {
+export async function hookAutocomplete(context: vscode.ExtensionContext) {
+	const autocompleteProvider = new AutocompleteProvider()
+
+	// Initialize the autocomplete preview text visibility context to false
+	vscode.commands.executeCommand("setContext", "kilo-code.autocompletePreviewVisible", false)
+
+	try {
+		// Await the async register method
+		const disposable = await autocompleteProvider.register(context)
+
+		// Subscribe to the event in the AutocompleteProvider
+		context.subscriptions.push({
+			dispose: () => {
+				// Clean up the provider when extension is deactivated
+				if (disposable) {
+					disposable.dispose()
+				}
+
+				// Reset the context when disposing
+				vscode.commands.executeCommand("setContext", "kilo-code.autocompletePreviewVisible", false)
+
+				// Dispose the autocomplete provider
+				autocompleteProvider.dispose()
+			},
+		})
+	} catch (error) {
+		console.error("Failed to register autocomplete provider:", error)
+	}
+}
+
+class AutocompleteProvider implements vscode.InlineCompletionItemProvider {
 	// API and completion state
 	private apiHandler: ApiHandler
 	private enabled: boolean = true
