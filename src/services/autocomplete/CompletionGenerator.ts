@@ -104,6 +104,7 @@ export class CompletionGenerator {
 			})
 
 			// Process the completion stream
+			const startTime = performance.now()
 			const result = await this.processStream(
 				systemPrompt,
 				prompt.prompt,
@@ -111,10 +112,29 @@ export class CompletionGenerator {
 				document,
 				abortController.signal,
 			)
+			const time = performance.now() - startTime
 
 			if (result.isCancelled || token.isCancellationRequested) {
+				console.log(`Completion ${completionId} cancelled`)
 				return null
 			}
+
+			console.log(`
+=== COMPLETION ${completionId} ===
+Time: ${time} ms
+
+
+=== SYSTEM PROMPT ===
+${systemPrompt}
+
+
+=== PROMPT ===
+${prompt.prompt}
+
+
+=== COMPLETION ===
+${result.completion}
+`)
 
 			return this.cleanMarkdownCodeBlocks(result.completion)
 		} finally {
