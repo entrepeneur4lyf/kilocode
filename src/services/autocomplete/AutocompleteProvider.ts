@@ -16,10 +16,9 @@ const MIN_TYPED_LENGTH_FOR_COMPLETION = 4
 const AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY = "kilo-code.autocompletePreviewVisible"
 
 export async function hookAutocomplete(context: vscode.ExtensionContext) {
-	// Initialize the autocomplete preview text visibility context to false
-	vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, false)
-
 	try {
+		// Initialize the autocomplete preview text visibility context to false
+		vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, false)
 		// Create and register the provider
 		const provider = createAutocompleteProvider()
 		const disposable = provider.register(context)
