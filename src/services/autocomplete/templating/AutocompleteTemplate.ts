@@ -204,6 +204,14 @@ const codegemmaFimTemplate: AutocompleteTemplate = {
 	},
 }
 
+// Google Gemini 2.5 Flash FIM template
+const googleGeminiFlashFimTemplate: AutocompleteTemplate = {
+	template: "<FIM_PREFIX>{{{prefix}}}<FIM_SUFFIX>{{{suffix}}}<FIM_MIDDLE>",
+	completionOptions: {
+		stop: ["<FIM_PREFIX>", "<FIM_SUFFIX>", "<FIM_MIDDLE>", "<eos>"],
+	},
+}
+
 // PLANREF: continue/core/autocomplete/templating/AutocompleteTemplate.ts (starcoder2FimTemplate)
 const starcoder2FimTemplate: AutocompleteTemplate = {
 	template: (
@@ -433,6 +441,10 @@ export function getTemplateForModel(model: string): AutocompleteTemplate {
 
 	if (lowerCaseModel.includes("codegemma")) {
 		return codegemmaFimTemplate
+	}
+
+	if (lowerCaseModel.includes("gemini") && (lowerCaseModel.includes("flash") || lowerCaseModel.includes("2.5"))) {
+		return googleGeminiFlashFimTemplate
 	}
 
 	if (lowerCaseModel.includes("codellama")) {
