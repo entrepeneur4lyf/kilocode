@@ -72,14 +72,13 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		this.registerTextEditorEvents(context)
 		this.registerPreviewCommands(context)
 
+		// Register command to handle inline suggestion commits
 		context.subscriptions.push(
 			vscode.commands.registerCommand("editor.action.inlineSuggest.commit", async () => {
 				if (this.completionState.isShowingPreview) {
 					await vscode.commands.executeCommand("kilo-code.acceptAutocompletePreview")
-					return
 				}
-
-				await vscode.commands.executeCommand("default:editor.action.inlineSuggest.commit")
+				// If not showing our preview, let VSCode handle the default behavior
 			}),
 		)
 

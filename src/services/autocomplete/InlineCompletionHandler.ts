@@ -28,8 +28,8 @@ export class InlineCompletionHandler {
 			return []
 		}
 
-		// Set command to ensure VS Code knows this is a completion that can be accepted with Tab
-		item.command = { command: "editor.action.inlineSuggest.commit", title: "Accept Completion" }
+		// Don't set a command - let VSCode handle Tab key naturally
+		// The command registration in AutocompleteProvider will handle the acceptance
 
 		// Update context for keybindings
 		this.setPreviewVisible(true)
