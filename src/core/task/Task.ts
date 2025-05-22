@@ -3,6 +3,8 @@ import os from "os"
 import crypto from "crypto"
 import EventEmitter from "events"
 
+import * as vscode from "vscode" // kilocode_change:
+
 import { Anthropic } from "@anthropic-ai/sdk"
 import delay from "delay"
 import pWaitFor from "p-wait-for"
@@ -79,6 +81,11 @@ import { ApiMessage } from "../task-persistence/apiMessages"
 import { getMessagesSinceLastSummary } from "../condense"
 import { maybeRemoveImageBlocks } from "../../api/transform/image-cleaning"
 import { processKiloUserContentMentions } from "../mentions/processKiloUserContentMentions" // kilocode_change
+import { refreshWorkflowToggles } from "../context/instructions/workflows" // kilocode_change
+import { parseMentions } from "../mentions" // kilocode_change
+import { parseKiloSlashCommands } from "../slash-commands/kilo" // kilocode_change
+import { GlobalFileNames } from "../../shared/globalFileNames" // kilocode_change
+import { ensureLocalKilorulesDirExists } from "../context/instructions/kilo-rules" // kilocode_change
 
 export type ClineEvents = {
 	message: [{ action: "created" | "updated"; message: ClineMessage }]
@@ -95,6 +102,7 @@ export type ClineEvents = {
 }
 
 export type TaskOptions = {
+	context: vscode.ExtensionContext // kilocode_change
 	provider: ClineProvider
 	apiConfiguration: ProviderSettings
 	enableDiff?: boolean
@@ -112,7 +120,11 @@ export type TaskOptions = {
 	onCreated?: (cline: Task) => void
 }
 
+type UserContent = Array<Anthropic.ContentBlockParam> // kilocode_change
+
 export class Task extends EventEmitter<ClineEvents> {
+	private context: vscode.ExtensionContext // kilocode_change
+
 	readonly taskId: string
 	readonly instanceId: string
 
@@ -187,6 +199,7 @@ export class Task extends EventEmitter<ClineEvents> {
 	didCompleteReadingStream = false
 
 	constructor({
+		context, // kilocode_change
 		provider,
 		apiConfiguration,
 		enableDiff = false,
@@ -203,6 +216,7 @@ export class Task extends EventEmitter<ClineEvents> {
 		onCreated,
 	}: TaskOptions) {
 		super()
+		this.context = context // kilocode_change
 
 		if (startTask && !task && !images && !historyItem) {
 			throw new Error("Either historyItem or task/images must be provided")
@@ -255,6 +269,16 @@ export class Task extends EventEmitter<ClineEvents> {
 			}
 		}
 	}
+
+	// kilocode_change start
+	private getContext(): vscode.ExtensionContext {
+		const context = this.context
+		if (!context) {
+			throw new Error("Unable to access extension context")
+		}
+		return context
+	}
+	// kilocode_change end
 
 	static create(options: TaskOptions): [Task, Promise<void>] {
 		const instance = new Task({ ...options, startTask: false })
@@ -1023,6 +1047,7 @@ export class Task extends EventEmitter<ClineEvents> {
 
 		// kilocode_change start
 		const [parsedUserContent, needsRulesFileCheck] = await processKiloUserContentMentions({
+			context: this.context, // kilocode_change
 			userContent,
 			cwd: this.cwd,
 			urlContentFetcher: this.urlContentFetcher,
@@ -1357,6 +1382,80 @@ export class Task extends EventEmitter<ClineEvents> {
 			return true // Needs to be true so parent loop knows to end task.
 		}
 	}
+
+	// kilocode_change start
+	async loadContext(
+		userContent: UserContent,
+		includeFileDetails: boolean = false,
+	): Promise<[UserContent, string, boolean]> {
+		// Track if we need to check clinerulesFile
+		let needsClinerulesFileCheck = false
+
+		// bookmark
+		const workflowToggles = await refreshWorkflowToggles(this.getContext(), this.cwd)
+
+		const processUserContent = async () => {
+			// This is a temporary solution to dynamically load context mentions from tool results. It checks for the presence of tags that indicate that the tool was rejected and feedback was provided (see formatToolDeniedFeedback, attemptCompletion, executeCommand, and consecutiveMistakeCount >= 3) or "<answer>" (see askFollowupQuestion), we place all user generated content in these tags so they can effectively be used as markers for when we should parse mentions). However if we allow multiple tools responses in the future, we will need to parse mentions specifically within the user content tags.
+			// (Note: this caused the @/ import alias bug where file contents were being parsed as well, since v2 converted tool results to text blocks)
+			return await Promise.all(
+				userContent.map(async (block) => {
+					if (block.type === "text") {
+						// We need to ensure any user generated content is wrapped in one of these tags so that we know to parse mentions
+						// FIXME: Only parse text in between these tags instead of the entire text block which may contain other tool results. This is part of a larger issue where we shouldn't be using regex to parse mentions in the first place (ie for cases where file paths have spaces)
+						if (
+							block.text.includes("<feedback>") ||
+							block.text.includes("<answer>") ||
+							block.text.includes("<task>") ||
+							block.text.includes("<user_message>")
+						) {
+							const parsedText = await parseMentions(
+								block.text,
+								this.cwd,
+								this.urlContentFetcher,
+								this.fileContextTracker,
+							)
+
+							// when parsing slash commands, we still want to allow the user to provide their desired context
+							const { processedText, needsRulesFileCheck: needsCheck } = await parseKiloSlashCommands(
+								parsedText,
+								workflowToggles,
+							)
+
+							if (needsCheck) {
+								needsClinerulesFileCheck = true
+							}
+
+							return {
+								...block,
+								text: processedText,
+							}
+						}
+					}
+					return block
+				}),
+			)
+		}
+
+		// Run initial promises in parallel
+		const [processedUserContent, environmentDetails] = await Promise.all([
+			processUserContent(),
+			getEnvironmentDetails(this, includeFileDetails),
+		])
+		// const [parsedUserContent, environmentDetails, clinerulesError] = await this.loadContext(
+		// 	userContent,
+		// 	includeFileDetails,
+		// )
+
+		// After processing content, check clinerulesData if needed
+		let clinerulesError = false
+		if (needsClinerulesFileCheck) {
+			clinerulesError = await ensureLocalKilorulesDirExists(this.cwd, GlobalFileNames.kiloRules)
+		}
+
+		// Return all results
+		return [processedUserContent, environmentDetails, clinerulesError]
+	}
+	// kilocode_change end
 
 	public async *attemptApiRequest(previousApiReqIndex: number, retryAttempt: number = 0): ApiStream {
 		let mcpHub: McpHub | undefined

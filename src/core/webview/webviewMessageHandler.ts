@@ -36,6 +36,7 @@ import { Mode, defaultModeSlug } from "../../shared/modes"
 import { GlobalState } from "../../schemas"
 import { getModels, flushModels } from "../../api/providers/fetchers/modelCache"
 import { generateSystemPrompt } from "./generateSystemPrompt"
+import { ClineRulesToggles } from "../../shared/cline-rules" // kilocode_change
 
 const ALLOWED_VSCODE_SETTINGS = new Set(["terminal.integrated.inheritEnv"])
 
@@ -50,6 +51,10 @@ export const webviewMessageHandler = async (provider: ClineProvider, message: We
 			// Load custom modes first
 			const customModes = await provider.customModesManager.getCustomModes()
 			await updateGlobalState("customModes", customModes)
+
+			// Refresh workflow toggles
+			const { refreshWorkflowToggles } = await import("../context/instructions/workflows") // kilocode_change
+			await refreshWorkflowToggles(provider.context, provider.cwd) // kilocode_change
 
 			provider.postStateToWebview()
 			provider.workspaceTracker?.initializeFilePaths() // Don't await.
@@ -1381,6 +1386,21 @@ export const webviewMessageHandler = async (provider: ClineProvider, message: We
 
 		case "silentlyRefreshMcpMarketplace": {
 			await provider.silentlyRefreshMcpMarketplace()
+			break
+		}
+
+		case "toggleWorkflow": {
+			const { workflowPath, enabled } = message
+			if (workflowPath && typeof enabled === "boolean") {
+				const toggles =
+					((await provider.contextProxy.getWorkspaceState(
+						provider.context,
+						"workflowToggles",
+					)) as ClineRulesToggles) || {}
+				toggles[workflowPath] = enabled
+				await provider.contextProxy.updateWorkspaceState(provider.context, "workflowToggles", toggles)
+				await provider.postStateToWebview()
+			}
 			break
 		}
 

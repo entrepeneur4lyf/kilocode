@@ -272,6 +272,11 @@ describe("ClineProvider", () => {
 					.mockImplementation((key: string, value: string | undefined) => (globalState[key] = value)),
 				keys: jest.fn().mockImplementation(() => Object.keys(globalState)),
 			},
+			workspaceState: {
+				get: jest.fn().mockResolvedValue(undefined),
+				update: jest.fn().mockResolvedValue(undefined),
+				keys: jest.fn().mockReturnValue([]),
+			},
 			secrets: {
 				get: jest.fn().mockImplementation((key: string) => secrets[key]),
 				store: jest.fn().mockImplementation((key: string, value: string | undefined) => (secrets[key] = value)),
@@ -322,6 +327,7 @@ describe("ClineProvider", () => {
 		provider = new ClineProvider(mockContext, mockOutputChannel, "sidebar", new ContextProxy(mockContext))
 
 		defaultTaskOptions = {
+			context: mockContext,
 			provider,
 			apiConfiguration: {
 				apiProvider: "openrouter",
@@ -1902,6 +1908,11 @@ describe("Project MCP Settings", () => {
 				update: jest.fn(),
 				keys: jest.fn().mockReturnValue([]),
 			},
+			workspaceState: {
+				get: jest.fn().mockResolvedValue(undefined),
+				update: jest.fn().mockResolvedValue(undefined),
+				keys: jest.fn().mockReturnValue([]),
+			},
 			secrets: {
 				get: jest.fn(),
 				store: jest.fn(),
@@ -2023,6 +2034,11 @@ describe.skip("ContextProxy integration", () => {
 			globalState: {
 				get: jest.fn(),
 				update: jest.fn(),
+				keys: jest.fn().mockReturnValue([]),
+			},
+			workspaceState: {
+				get: jest.fn().mockResolvedValue(undefined),
+				update: jest.fn().mockResolvedValue(undefined),
 				keys: jest.fn().mockReturnValue([]),
 			},
 			secrets: { get: jest.fn(), store: jest.fn(), delete: jest.fn() },
