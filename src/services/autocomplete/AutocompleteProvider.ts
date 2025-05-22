@@ -103,22 +103,13 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 
 	const cleanMarkdownCodeBlocks = (text: string): string => {
 		// Handle complete code blocks
-		let cleanedText = text.replace(/```[\w-]*\n([\s\S]*?)\n```/g, "$1")
-
-		// Handle opening code block markers at the beginning of a chunk
-		cleanedText = cleanedText.replace(/^```[\w-]*\n/g, "")
-
-		// Handle opening code block markers in the middle of a chunk
-		cleanedText = cleanedText.replace(/\n```[\w-]*\n/g, "\n")
-
-		// Handle closing code block markers
-		cleanedText = cleanedText.replace(/\n```$/g, "")
-
-		// Handle any remaining backticks that might be part of incomplete code blocks
-		cleanedText = cleanedText.replace(/```[\w-]*$/g, "")
-
-		// Trim any leading/trailing whitespace that might be left over
-		return cleanedText.trim()
+		return text
+			.replace(/```[\w-]*\n([\s\S]*?)\n```/g, "$1")
+			.replace(/^```[\w-]*\n/g, "") // Handle opening code block markers at the beginning of a chunk
+			.replace(/\n```[\w-]*\n/g, "\n") // Handle opening code block markers in the middle of a chunk
+			.replace(/\n```$/g, "") // Handle closing code block markers
+			.replace(/```[\w-]*$/g, "") // Handle any remaining backticks that might be part of incomplete code blocks
+			.trim() // Trim any leading/trailing whitespace that might be left over
 	}
 
 	const isFileDisabled = (document: vscode.TextDocument): boolean => {
