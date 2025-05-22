@@ -322,10 +322,14 @@ export function estimateTokenCount(text: string): number {
  * @param response The AI response containing SEARCH/REPLACE blocks
  * @returns An array of NewDiffEdit objects
  */
-export function parseSearchReplaceBlocks(response: string): NewDiffEdit[] {
+export function parseSearchReplaceBlocks(response: string, defaultFilePath?: string): NewDiffEdit[] {
 	const edits: NewDiffEdit[] = []
-	const fileBlockRegex = /([^\s]+?)\n<<<<<<< SEARCH\n([\s\S]*?)=======\n([\s\S]*?)>>>>>>> REPLACE/g
 
+	// Match with file path (standard format)
+	const fileBlockRegex =
+		/([^\s]+?)\n(?:`)?<<<<<<< SEARCH(?:`)?(?:\n|\s)([\s\S]*?)(?:`)?=======(?:`)?(?:\n|\s)([\s\S]*?)(?:`)?>>>>>>> REPLACE(?:`)?/g
+
+	// Process matches with file paths
 	let match
 	while ((match = fileBlockRegex.exec(response)) !== null) {
 		const filePath = match[1].trim()
@@ -344,6 +348,30 @@ export function parseSearchReplaceBlocks(response: string): NewDiffEdit[] {
 		})
 	}
 
+	// Also check for blocks without file paths (directly starting with SEARCH marker)
+	const noFilePathRegex =
+		/^(?:`)?<<<<<<< SEARCH(?:`)?(?:\n|\s)([\s\S]*?)(?:`)?=======(?:`)?(?:\n|\s)([\s\S]*?)(?:`)?>>>>>>> REPLACE(?:`)?/gm
+
+	// Only process these if we have a default file path
+	if (defaultFilePath) {
+		let noPathMatch
+		while ((noPathMatch = noFilePathRegex.exec(response)) !== null) {
+			const searchBlock = noPathMatch[1]
+			const replaceBlock = noPathMatch[2]
+
+			// Create a DiffEdit with DiffBlocks
+			const blocks: DiffBlock[] = [
+				{ type: "SEARCH", content: searchBlock },
+				{ type: "REPLACE", content: replaceBlock },
+			]
+
+			edits.push({
+				filePath: defaultFilePath,
+				blocks,
+			})
+		}
+	}
+
 	return edits
 }
 
@@ -353,23 +381,20 @@ export function parseSearchReplaceBlocks(response: string): NewDiffEdit[] {
  * @param triggerType The trigger type (Edit or Ask)
  * @returns An AIResponse object containing the edits and explanation
  */
-export function parseAIResponse(response: string, triggerType: TriggerType): AIResponse {
+export function parseAIResponse(response: string, triggerType: TriggerType, currentFilePath?: string): AIResponse {
 	console.log("[WatchMode DEBUG] Parsing AI response")
 	console.log("[WatchMode DEBUG] === FULL AI RESPONSE ===")
 	console.log(response)
 	console.log("[WatchMode DEBUG] === END AI RESPONSE ===")
 
 	// Debug log the full response string
-	console.debug(
-		"[WatchMode DEBUG] Full response string:",
-		JSON.stringify({
-			response: response,
-			length: response.length,
-			estimatedTokens: estimateTokenCount(response),
-			triggerType: triggerType,
-			timestamp: new Date().toISOString(),
-		}),
-	)
+	console.debug("[WatchMode DEBUG] Full response string:", {
+		response: response,
+		length: response.length,
+		estimatedTokens: estimateTokenCount(response),
+		triggerType: triggerType,
+		timestamp: new Date().toISOString(),
+	})
 
 	// Initialize the result
 	const result: AIResponse = {
@@ -385,12 +410,15 @@ export function parseAIResponse(response: string, triggerType: TriggerType): AIR
 	}
 
 	// Try to parse SEARCH/REPLACE blocks first
-	const searchReplaceEdits = parseSearchReplaceBlocks(response)
+	const searchReplaceEdits = parseSearchReplaceBlocks(response, currentFilePath)
 	if (searchReplaceEdits.length > 0) {
 		result.edits = searchReplaceEdits
 
 		// Extract any explanation text (text before or after the code blocks)
-		const withoutCodeBlocks = response.replace(/([^\s]+?)\n<<<<<<< SEARCH\n[\s\S]*?>>>>>>> REPLACE/g, "")
+		const withoutCodeBlocks = response.replace(
+			/([^\s]+?)\n(?:`)?<<<<<<< SEARCH(?:`)?(?:\n|\s)[\s\S]*?(?:`)?>>>>>>> REPLACE(?:`)?/g,
+			"",
+		)
 		result.explanation = withoutCodeBlocks.trim()
 
 		return result
@@ -1115,12 +1143,6 @@ export const applyDiffToDocument = async (
 }
 
 /**
- * Applies SEARCH/REPLACE blocks to a document
- * @param document The document to modify
- * @param edits The NewDiffEdit objects containing SEARCH/REPLACE blocks
- * @returns A promise that resolves to true if the edits were applied successfully
- */
-/**
  * Applies SEARCH/REPLACE blocks to a document with enhanced fuzzy matching
  * @param document The document to modify
  * @param edits The NewDiffEdit objects containing SEARCH/REPLACE blocks
@@ -1268,6 +1290,49 @@ export const applySearchReplaceEdits = async (
 				continue
 			}
 
+			// 4. Try with leading/trailing empty lines normalization
+			const trimmedSearch = searchText.trim()
+			const documentLines = documentContent.split("\n")
+
+			// Find non-empty lines in the document
+			let startLine = 0
+			while (startLine < documentLines.length && documentLines[startLine].trim() === "") {
+				startLine++
+			}
+
+			let endLine = documentLines.length - 1
+			while (endLine >= 0 && documentLines[endLine].trim() === "") {
+				endLine--
+			}
+
+			// Extract the content without leading/trailing empty lines
+			const trimmedDocumentLines = documentLines.slice(startLine, endLine + 1)
+			const trimmedDocument = trimmedDocumentLines.join("\n")
+
+			console.log(`[WatchMode DEBUG] Trying with trimmed leading/trailing empty lines in ${documentPath}`)
+
+			if (trimmedDocument.includes(trimmedSearch)) {
+				console.log(
+					`[WatchMode DEBUG] Found match after trimming leading/trailing empty lines in ${documentPath}`,
+				)
+
+				// Find the position in trimmed document
+				const startPos = trimmedDocument.indexOf(trimmedSearch)
+
+				// Map back to original content positions
+				const originalStartPos = documentContent.indexOf(trimmedDocument) + startPos
+				const originalEndPos = originalStartPos + trimmedSearch.length
+
+				const range = new vscode.Range(
+					document.positionAt(originalStartPos),
+					document.positionAt(originalEndPos),
+				)
+
+				edit.replace(document.uri, range, replaceBlock.content)
+				success = true
+				continue
+			}
+
 			console.log(`[WatchMode DEBUG] Search text not found in document: ${searchText.substring(0, 50)}...`)
 		}
 
@@ -1293,6 +1358,18 @@ export const applySearchReplaceEdits = async (
  * @returns A unique substring or null if none found
  */
 function findUniqueSubstring(searchText: string, content: string): string | null {
+	// First try with the trimmed search text
+	const trimmedSearch = searchText.trim()
+	if (trimmedSearch !== searchText) {
+		// Check if the trimmed version appears exactly once
+		const trimmedRegex = new RegExp(escapeRegExp(trimmedSearch), "g")
+		const trimmedMatches = content.match(trimmedRegex)
+
+		if (trimmedMatches && trimmedMatches.length === 1) {
+			return trimmedSearch
+		}
+	}
+
 	// Try different lengths of substrings
 	for (let length = Math.min(searchText.length, 40); length >= 10; length--) {
 		for (let i = 0; i <= searchText.length - length; i++) {
@@ -1410,7 +1487,8 @@ export const processAIResponse = async (
 		console.log(`[WatchMode DEBUG] Trigger type: ${triggerType}`)
 
 		// Parse the AI response
-		const parsedResponse = parseAIResponse(response, triggerType)
+		const currentFilePath = vscode.workspace.asRelativePath(document.uri)
+		const parsedResponse = parseAIResponse(response, triggerType, currentFilePath)
 		console.log(
 			`[WatchMode DEBUG] Parsed response: ${parsedResponse.edits.length} edits, explanation length: ${parsedResponse.explanation.length}`,
 		)
@@ -1640,11 +1718,11 @@ Please correct your previous response to address these errors. Make sure your SE
 You MUST respond with SEARCH/REPLACE blocks for each edit. Format your changes as follows:
 
 ${filePath}
-\`<<<<<<< SEARCH\`
+\<\<\<\<\<\<\< SEARCH
 exact original code
-\`=======\`
+\=\=\=\=\=\=\=
 replacement code
-\`>>>>>>> REPLACE\`
+\>\>\>\>\>\>\> REPLACE
 
 You can include multiple SEARCH/REPLACE blocks for the same file, and you can edit multiple files.
 Make sure to include enough context in the SEARCH block to uniquely identify the code to replace.
