@@ -10,33 +10,7 @@ export async function registerAutocomplete(context: vscode.ExtensionContext) {
 	const config = vscode.workspace.getConfiguration()
 
 	// Create and register the autocomplete provider
-	const autocompleteProvider = new AutocompleteProvider()
-
-	// Initialize the autocomplete preview text visibility context to false
-	vscode.commands.executeCommand("setContext", "kilo-code.autocompletePreviewVisible", false)
-
-	try {
-		// Await the async register method
-		const disposable = await autocompleteProvider.register(context)
-
-		// Subscribe to the event in the AutocompleteProvider
-		context.subscriptions.push({
-			dispose: () => {
-				// Clean up the provider when extension is deactivated
-				if (disposable) {
-					disposable.dispose()
-				}
-
-				// Reset the context when disposing
-				vscode.commands.executeCommand("setContext", "kilo-code.autocompletePreviewVisible", false)
-
-				// Dispose the autocomplete provider
-				autocompleteProvider.dispose()
-			},
-		})
-	} catch (error) {
-		console.error("Failed to register autocomplete provider:", error)
-	}
+	await hookAutocomplete(context)
 
 	// Ensure the configuration exists
 	if (!config.has("kilo-code.autocomplete.enabled")) {
@@ -81,4 +55,34 @@ export async function registerAutocomplete(context: vscode.ExtensionContext) {
 
 	// Log that autocomplete has been registered
 	console.log("Kilo Code autocomplete provider registered")
+}
+
+async function hookAutocomplete(context: vscode.ExtensionContext) {
+	const autocompleteProvider = new AutocompleteProvider()
+
+	// Initialize the autocomplete preview text visibility context to false
+	vscode.commands.executeCommand("setContext", "kilo-code.autocompletePreviewVisible", false)
+
+	try {
+		// Await the async register method
+		const disposable = await autocompleteProvider.register(context)
+
+		// Subscribe to the event in the AutocompleteProvider
+		context.subscriptions.push({
+			dispose: () => {
+				// Clean up the provider when extension is deactivated
+				if (disposable) {
+					disposable.dispose()
+				}
+
+				// Reset the context when disposing
+				vscode.commands.executeCommand("setContext", "kilo-code.autocompletePreviewVisible", false)
+
+				// Dispose the autocomplete provider
+				autocompleteProvider.dispose()
+			},
+		})
+	} catch (error) {
+		console.error("Failed to register autocomplete provider:", error)
+	}
 }
