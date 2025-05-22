@@ -35,5 +35,16 @@
 		"fieldDescription": "オートコンプリート用の特定のAPI設定を選択します。コードの自動補完が得意なモデルは限られています。",
 		"learnMore": "詳細を見る",
 		"useCurrentConfig": "現在のAPI設定を使用する"
+	},
+	"profile": {
+		"dashboard": "ダッシュボード",
+		"logOut": "ログアウト",
+		"currentBalance": "現在の残高",
+		"loading": "読み込み中...",
+		"signUp": {
+			"title": "Kilo Codeにサインアップ",
+			"description": "Kilo Codeにサインアップすると、開始するための無料クレジットが提供されます。クレジットを使用して機能を探索し、最新で最高のモデルを試し、コミットメントなしでKilo Codeの利点を体験してください。",
+			"termsAndPrivacy": "続行することで、<termsLink>利用規約</termsLink>および<privacyLink>プライバシーポリシー</privacyLink>に同意したものとみなされます。"
+		}
 	}
 }

@@ -35,5 +35,16 @@
 		"fieldDescription": "Chọn một cấu hình API cụ thể cho tự động hoàn thành. Chỉ một số mô hình nhất định mới giỏi trong việc tự động hoàn thành mã.",
 		"learnMore": "Tìm hiểu thêm",
 		"useCurrentConfig": "Sử dụng cấu hình API hiện tại"
+	},
+	"profile": {
+		"dashboard": "Bảng điều khiển",
+		"logOut": "Đăng xuất",
+		"currentBalance": "SỐ DƯ HIỆN TẠI",
+		"loading": "Đang tải...",
+		"signUp": {
+			"title": "Đăng ký Kilo Code",
+			"description": "Đăng ký Kilo Code sẽ cung cấp cho bạn tín dụng miễn phí để bắt đầu. Sử dụng tín dụng của bạn để khám phá các tính năng, thử nghiệm các mô hình mới nhất và tốt nhất, và trải nghiệm lợi ích của Kilo Code mà không cần cam kết.",
+			"termsAndPrivacy": "Bằng cách tiếp tục, bạn đồng ý với <termsLink>Điều khoản Dịch vụ</termsLink> và <privacyLink>Chính sách Bảo mật.</privacyLink>"
+		}
 	}
 }

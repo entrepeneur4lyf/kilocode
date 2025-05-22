@@ -35,5 +35,17 @@
 		"fieldDescription": "Sélectionnez une configuration d'API spécifique pour l'autocomplétion. Seuls certains modèles sont performants pour l'autocomplétion de code.",
 		"learnMore": "En savoir plus",
 		"useCurrentConfig": "Utiliser la configuration d'API actuelle"
+	},
+
+	"profile": {
+		"dashboard": "Tableau de bord",
+		"logOut": "Se déconnecter",
+		"currentBalance": "SOLDE ACTUEL",
+		"loading": "Chargement...",
+		"signUp": {
+			"title": "S'inscrire à Kilo Code",
+			"description": "S'inscrire à Kilo Code vous donne des crédits gratuits pour commencer. Utilisez vos crédits pour explorer nos fonctionnalités, essayer les modèles les plus récents et les meilleurs, et découvrir les avantages de Kilo Code sans engagement.",
+			"termsAndPrivacy": "En continuant, vous acceptez les <termsLink>Conditions de Service</termsLink> et la <privacyLink>Politique de Confidentialité.</privacyLink>"
+		}
 	}
 }
