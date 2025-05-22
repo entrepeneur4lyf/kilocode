@@ -260,15 +260,9 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 					throttleTimeout = setTimeout(() => {
 						if (pendingEditor && pendingEditor.document === document) {
 							// If first line is complete, update state based on current completion
-							const previewState = {
-								firstLinePreview,
-								remainingLinesPreview,
-								hasAcceptedFirstLine,
-								isShowingAutocompletePreview,
-								isLoadingCompletion,
-							}
+
 							if (firstLineComplete) {
-								if (!previewState.hasAcceptedFirstLine) {
+								if (!hasAcceptedFirstLine) {
 									// Otherwise, still store just the first line
 									firstLinePreview = currentFirstLine
 								}
@@ -281,7 +275,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 							}
 
 							// Trigger inline suggestion to update
-							if (previewState.isShowingAutocompletePreview) {
+							if (isShowingAutocompletePreview) {
 								vscode.commands.executeCommand("editor.action.inlineSuggest.trigger")
 							}
 						}
@@ -392,14 +386,8 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		if (result.isCancelled || token.isCancellationRequested) {
 			// Make sure to clear the loading indicator if the completion is cancelled
 			const editor = vscode.window.activeTextEditor
-			const previewState = {
-				firstLinePreview,
-				remainingLinesPreview,
-				hasAcceptedFirstLine,
-				isShowingAutocompletePreview,
-				isLoadingCompletion,
-			}
-			if (editor && previewState.isLoadingCompletion) {
+
+			if (editor && isLoadingCompletion) {
 				editor.setDecorations(loadingDecorationType, [])
 				isLoadingCompletion = false
 			}
@@ -410,14 +398,8 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		if (!validateCompletionContext(context, document, position)) {
 			// Make sure to clear the loading indicator if validation fails
 			const editor = vscode.window.activeTextEditor
-			const previewState = {
-				firstLinePreview,
-				remainingLinesPreview,
-				hasAcceptedFirstLine,
-				isShowingAutocompletePreview,
-				isLoadingCompletion,
-			}
-			if (editor && previewState.isLoadingCompletion) {
+
+			if (editor && isLoadingCompletion) {
 				editor.setDecorations(loadingDecorationType, [])
 				isLoadingCompletion = false
 			}
@@ -439,15 +421,8 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		}
 
 		try {
-			const previewState = {
-				firstLinePreview,
-				remainingLinesPreview,
-				hasAcceptedFirstLine,
-				isShowingAutocompletePreview,
-				isLoadingCompletion,
-			}
-			if (previewState.hasAcceptedFirstLine && previewState.remainingLinesPreview) {
-				const item = new vscode.InlineCompletionItem(previewState.remainingLinesPreview)
+			if (hasAcceptedFirstLine && remainingLinesPreview) {
+				const item = new vscode.InlineCompletionItem(remainingLinesPreview)
 				item.command = { command: "editor.action.inlineSuggest.commit", title: "Accept Completion" }
 				isShowingAutocompletePreview = true
 				vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, true)
@@ -523,15 +498,8 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		context.subscriptions.push(
 			vscode.window.onDidChangeTextEditorSelection((e) => {
 				if (e.textEditor) {
-					const previewState = {
-						firstLinePreview,
-						remainingLinesPreview,
-						hasAcceptedFirstLine,
-						isShowingAutocompletePreview,
-						isLoadingCompletion,
-					}
 					// Clear loading indicator when cursor moves
-					if (previewState.isLoadingCompletion) {
+					if (isLoadingCompletion) {
 						clearAutocompletePreview()
 					}
 
@@ -540,7 +508,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 
 					// If we've accepted the first line and cursor moves, reset state
 					// This prevents showing remaining lines if user moves cursor after accepting first line
-					if (previewState.hasAcceptedFirstLine && e.kind !== vscode.TextEditorSelectionChangeKind.Command) {
+					if (hasAcceptedFirstLine && e.kind !== vscode.TextEditorSelectionChangeKind.Command) {
 						clearAutocompletePreview()
 					}
 				}
@@ -549,14 +517,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 
 		context.subscriptions.push(
 			vscode.workspace.onDidChangeTextDocument((e) => {
-				const previewState = {
-					firstLinePreview,
-					remainingLinesPreview,
-					hasAcceptedFirstLine,
-					isShowingAutocompletePreview,
-					isLoadingCompletion,
-				}
-				if (previewState.isLoadingCompletion) {
+				if (isLoadingCompletion) {
 					clearAutocompletePreview()
 				} else {
 					const editor = vscode.window.activeTextEditor
@@ -574,20 +535,12 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			const editor = vscode.window.activeTextEditor
 			if (!editor) return
 
-			const previewState = {
-				firstLinePreview,
-				remainingLinesPreview,
-				hasAcceptedFirstLine,
-				isShowingAutocompletePreview,
-				isLoadingCompletion,
-			}
-
 			// Handle the acceptance directly without calling commit again
-			if (!previewState.hasAcceptedFirstLine && previewState.remainingLinesPreview) {
+			if (!hasAcceptedFirstLine && remainingLinesPreview) {
 				// First Tab press: Insert the first line
-				if (previewState.firstLinePreview) {
+				if (firstLinePreview) {
 					await editor.edit((editBuilder) => {
-						editBuilder.insert(editor.selection.active, previewState.firstLinePreview)
+						editBuilder.insert(editor.selection.active, firstLinePreview)
 					})
 
 					// Mark that we've accepted the first line
@@ -599,10 +552,10 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 						await vscode.commands.executeCommand("editor.action.inlineSuggest.trigger")
 					}, 50)
 				}
-			} else if (previewState.hasAcceptedFirstLine && previewState.remainingLinesPreview) {
+			} else if (hasAcceptedFirstLine && remainingLinesPreview) {
 				// Second Tab press: Insert the remaining lines
 				await editor.edit((editBuilder) => {
-					editBuilder.insert(editor.selection.active, previewState.remainingLinesPreview)
+					editBuilder.insert(editor.selection.active, remainingLinesPreview)
 				})
 
 				// Reset state
@@ -654,14 +607,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 
 		context.subscriptions.push(
 			vscode.commands.registerCommand("editor.action.inlineSuggest.commit", async () => {
-				const previewState = {
-					firstLinePreview,
-					remainingLinesPreview,
-					hasAcceptedFirstLine,
-					isShowingAutocompletePreview,
-					isLoadingCompletion,
-				}
-				if (previewState.isShowingAutocompletePreview) {
+				if (isShowingAutocompletePreview) {
 					await vscode.commands.executeCommand("kilo-code.acceptAutocompletePreview")
 				} else {
 					// not sure if this is needed: leaving it here for now
