@@ -15,7 +15,7 @@ const DEFAULT_MODEL = "mistralai/codestral-2501" // or google/gemini-2.5-flash-p
 const MIN_TYPED_LENGTH_FOR_COMPLETION = 4
 const AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY = "kilo-code.autocompletePreviewVisible"
 
-export async function hookAutocomplete(context: vscode.ExtensionContext) {
+export function hookAutocomplete(context: vscode.ExtensionContext) {
 	try {
 		// Initialize the autocomplete preview text visibility context to false
 		vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, false)
