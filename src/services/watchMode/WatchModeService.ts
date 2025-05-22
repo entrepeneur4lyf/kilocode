@@ -1,12 +1,12 @@
 import * as vscode from "vscode"
 import { Anthropic } from "@anthropic-ai/sdk"
 import { EXPERIMENT_IDS, ExperimentId, experiments } from "../../shared/experiments"
-import { detectAIComments, buildAIPrompt, processAIResponse } from "./commentProcessor"
 import { AICommentData, FileChangeData, WatchModeConfig } from "./types"
 import { WatchModeUI } from "./ui"
 import { ApiHandler, buildApiHandler } from "../../api"
 import { ContextProxy } from "../../core/config/ContextProxy"
 import { writePromptToDebugFile, writePromptResponseToDebugFile } from "./PromptDebugger"
+import { detectAIComments, buildAIPrompt, processAIResponse } from "./commentProcessor"
 
 /**
  * Service that watches files for changes and processes AI comments
@@ -19,11 +19,6 @@ export class WatchModeService {
 	private outputChannel?: vscode.OutputChannel
 	private ui: WatchModeUI
 	private processingFiles: Set<string> = new Set()
-
-	/**
-	 * Tracks the current debug session ID for linking prompts with their responses
-	 * This ID is generated when writing a prompt and used when writing the corresponding response
-	 */
 	private currentDebugId?: string
 
 	// Event emitters
@@ -399,23 +394,12 @@ export class WatchModeService {
 			} catch (apiError) {
 				this.log(`Error calling AI model: ${apiError instanceof Error ? apiError.message : String(apiError)}`)
 				console.error("[WatchMode DEBUG] Error calling AI model:", apiError)
-
-				// The callAIModel method already writes the error to the debug file,
-				// but we need to make sure we don't try to write the response again
 				apiResponse = null
 			}
 
 			if (!apiResponse) {
 				this.log("No response from AI model")
 				console.error("[WatchMode DEBUG] No response from AI model")
-
-				// Write error information to debug file
-				if (this.currentDebugId) {
-					writePromptResponseToDebugFile("Error: No response received from AI model", this.currentDebugId)
-					// Reset the debug ID since we're done with this session
-					this.currentDebugId = undefined
-				}
-
 				this._onDidFinishProcessingComment.fire({
 					fileUri: document.uri,
 					comment,
@@ -464,10 +448,6 @@ export class WatchModeService {
 
 			// Clear the highlight
 			clearHighlight()
-
-			// Reset the debug ID after processing is complete
-			this.currentDebugId = undefined
-
 			this.log("=== DEBUGGING: processAIComment END ===")
 		} catch (error) {
 			this.log(`Error processing AI comment: ${error instanceof Error ? error.message : String(error)}`)
@@ -477,10 +457,6 @@ export class WatchModeService {
 				comment,
 				success: false,
 			})
-
-			// Reset the debug ID after processing is complete (even with error)
-			this.currentDebugId = undefined
-
 			this.log("=== DEBUGGING: processAIComment END (with error) ===")
 		}
 	}
@@ -538,6 +514,9 @@ export class WatchModeService {
 					}
 				}
 
+				this.log(
+					`Stream complete. Received ${chunkCount} chunks, total response length: ${fullResponse.length}`,
+				)
 				console.log(
 					`[WatchMode DEBUG] Stream complete. Received ${chunkCount} chunks, total response length: ${fullResponse.length}`,
 				)
@@ -549,13 +528,6 @@ export class WatchModeService {
 				this.log(
 					`Error processing stream: ${streamError instanceof Error ? streamError.message : String(streamError)}`,
 				)
-
-				// Write stream error information to debug file
-				if (this.currentDebugId) {
-					const errorMessage = `Error in stream processing:\n${streamError instanceof Error ? streamError.stack || streamError.message : String(streamError)}`
-					writePromptResponseToDebugFile(errorMessage, this.currentDebugId)
-				}
-
 				throw streamError
 			}
 
@@ -564,13 +536,6 @@ export class WatchModeService {
 		} catch (error) {
 			console.error("[WatchMode DEBUG] Error in callAIModel:", error)
 			this.log(`Error in callAIModel: ${error instanceof Error ? error.message : String(error)}`)
-
-			// Write error information to debug file
-			if (this.currentDebugId) {
-				const errorMessage = `Error in API call:\n${error instanceof Error ? error.stack || error.message : String(error)}`
-				writePromptResponseToDebugFile(errorMessage, this.currentDebugId)
-			}
-
 			this.log("=== DEBUGGING: callAIModel END (with error) ===")
 			throw error
 		}
@@ -679,3 +644,5 @@ export class WatchModeService {
 		this._onDidFinishProcessingComment.dispose()
 	}
 }
+
+

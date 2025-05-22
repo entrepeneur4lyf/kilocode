@@ -5,20 +5,20 @@ import { AICommentData, CommentProcessingResult, CommentProcessorOptions } from 
  * Custom error for when search text is not unique in a file
  */
 export class SearchTextNotUnique extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = "SearchTextNotUnique"
-  }
+	constructor(message: string) {
+		super(message)
+		this.name = "SearchTextNotUnique"
+	}
 }
 
-// Regular expressions for detecting AI comments
+// Regular expressions for detecting KILO comments
 const AI_COMMENT_PATTERNS = [
 	// For single line comments: // AI! do something
-	/\/\/\s*AI!(.+)$/gm,
-	// For multi-line comments: /* AI! do something */
-	/\/\*\s*AI!(.+?)\*\//gms,
-	// For inline comments: /** AI! do something */
-	/\/\*\*\s*AI!(.+?)\*\//gms,
+	/\/\/\s*KILO!(.+)$/gm,
+	// For multi-line comments: /* KILO! do something */
+	/\/\*\s*KILO!(.+?)\*\//gms,
+	// For inline comments: /** KILO! do something */
+	/\/\*\*\s*KILO!(.+?)\*\//gms,
 ]
 
 // Regular expression for detecting code blocks in AI responses
@@ -60,8 +60,8 @@ const OTHER_HUNKS_APPLIED = "Note: some hunks did apply successfully. See the up
  * Interface for a diff edit
  */
 export interface DiffEdit {
-  path: string
-  hunk: string[]
+	path: string
+	hunk: string[]
 }
 
 /**
@@ -207,41 +207,50 @@ export const buildAIPrompt = (commentData: AICommentData): string => {
 	return `
 You are Kilo Code, a highly skilled software engineer with extensive knowledge in many programming languages, frameworks, design patterns, and best practices.
 
-# File editing rules:
+# Task
 
-Return edits similar to unified diffs that \`diff -U0\` would produce.
-
-Make sure you include the first 2 lines with the file paths.
-Don't include timestamps with the file paths.
-
-Start each hunk of changes with a \`@@ ... @@\` line.
-Don't include line numbers like \`diff -U0\` does.
-The patch tool needs CORRECT patches that apply cleanly against the current contents of the file!
-
-Think carefully and make sure you include and mark all lines that need to be removed or changed as \`-\` lines.
-Make sure you mark all new or modified lines with \`+\`.
-Don't leave out any lines or the diff patch won't apply correctly.
-
-# AI Comment Instruction
 ${content}
 
-# File Path
-${filePath}
+Please make changes to the code shown below using unified diff format.
 
-# Code Context
+# Code to modify
+
 \`\`\`
 ${context || "No context available"}
 \`\`\`
 
-Please respond with code changes formatted as unified diffs. For each file that needs to be changed, write out the changes similar to a unified diff like \`diff -U0\` would produce.
+# Response format
+
+Respond with unified diff patches that I can apply to update the code.
+
+1. Format your changes as unified diff format (like \`git diff\`):
+   - Start with \`--- ${filePath}\` and \`+++ ${filePath}\` header lines
+   - Include one or more hunks that start with \`@@ ... @@\` lines
+   - Use \`-\` lines to show deletions, \`+\` lines for additions
+   - Include sufficient unchanged context lines (with a leading space) to ensure the hunks match uniquely
+
+2. If modifying multiple files, provide separate diffs for each file.
+
+3. Include necessary surrounding context:
+   - Make sure to include ENOUGH context lines so the changes can be uniquely located
+   - If there are multiple identical code sections, include more context to disambiguate
+   - Too little context may cause ambiguity, too much is better than too little
+
+4. CRITICAL: Make sure your diff can be applied cleanly:
+   - ALL lines you want to modify must be marked with \`-\`
+   - ALL new/replacement lines must be marked with \`+\`
+   - Don't skip blank lines, comments, or any other content!
+   - If you skip lines, the diff won't apply correctly
 
 Example format:
 \`\`\`diff
---- path/to/original/file.ext
-+++ path/to/updated/file.ext
+--- ${filePath}
++++ ${filePath}
 @@ ... @@
--old line
-+new line
+ // Context line(s) before (unchanged, starts with space)
+-// Old line to be removed or changed (starts with -)
++// New line to replace it (starts with +)
+ // Context line(s) after (unchanged, starts with space)
 \`\`\`
 
 If you need to explain your changes, please do so before or after the diff blocks.
@@ -618,8 +627,6 @@ export function flexiSearchAndReplace(before: string, after: string, content: st
  * Applies a hunk to content
  */
 export function applyHunk(content: string, hunk: string[]): string | null {
-	const [beforeText, afterText] = hunkToBeforeAfter(hunk)
-
 	// Try direct application first
 	try {
 		const [_beforeText, _afterText] = hunkToBeforeAfter(hunk)
@@ -965,10 +972,8 @@ export const processAIResponse = async (
 	)
 	console.log("[WatchMode DEBUG] Response length:", response.length)
 	console.log("[WatchMode DEBUG] Response preview:", response.substring(0, 100) + "...")
-	debugger
 
 	try {
-		// Create a new diff handler
 		const diffHandler = new UnifiedDiffHandler()
 
 		// Extract edits from the response
