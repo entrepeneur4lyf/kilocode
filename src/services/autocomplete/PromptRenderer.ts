@@ -7,7 +7,6 @@ import * as vscode from "vscode"
 import { AutocompleteLanguageInfo, getLanguageInfo } from "./AutocompleteLanguageInfo" // AIDIFF: AutocompleteLanguageInfo is used by getLanguageInfo
 import {
 	AutocompleteSnippet,
-	// AutocompleteSnippetType, // Removed AutocompleteSnippetType
 	// AIDIFF: Specific snippet types like AutocompleteCodeSnippet are not directly instantiated here after changes,
 	// but AutocompleteSnippet union type is used.
 } from "./templating/snippetTypes"
@@ -96,8 +95,6 @@ export class PromptRenderer {
 			: "my-repository" // AIDIFF: Default reponame
 		const workspaceUris = workspaceFolders?.map((folder) => folder.uri.toString()) || []
 
-		// Snippet generation is now handled externally and passed in.
-		// const snippets: AutocompleteSnippet[] = [] // Removed inline snippet generation
 
 		// PLANREF: continue/core/autocomplete/templating/index.ts (compilePrefixSuffix logic)
 		if (currentTemplate.compilePrefixSuffix) {
