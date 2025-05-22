@@ -1,5 +1,9 @@
 # kilo-code
 
+## [4.28.1]
+
+- [#488](https://github.com/Kilo-Org/kilocode/pull/488) [`cd22ade`](https://github.com/Kilo-Org/kilocode/commit/cd22adee2290bb45951973584f37ed731065c63b) Thanks [@EamonNerbonne](https://github.com/EamonNerbonne)! - Enable caching for the new anthropic models
+
 ## 4.28.0
 
 ### Minor Changes
