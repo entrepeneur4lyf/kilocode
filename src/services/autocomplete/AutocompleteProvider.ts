@@ -190,13 +190,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		let pendingEditor: vscode.TextEditor | null = null
 
 		// Function to check if the request has been cancelled
-		const checkCancellation = () => {
-			if (activeCompletionId !== completionId) {
-				isCancelled = true
-				return true
-			}
-			return false
-		}
 
 		// Function to split completion into first line and remaining lines
 		const splitCompletion = (text: string): { firstLine: string; remainingLines: string } => {
@@ -231,7 +224,8 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 
 		// Stream updates to store completion
 		for await (const chunk of stream) {
-			if (checkCancellation()) {
+			if (activeCompletionId !== completionId) {
+				isCancelled = true
 				break
 			}
 
