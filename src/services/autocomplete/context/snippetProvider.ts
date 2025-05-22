@@ -27,34 +27,28 @@ export function generateAutocompleteSnippets(
 	]
 }
 
-function generateImportSnippets(
+export const generateImportSnippets = (
 	imports: string[],
 	includeImports: boolean,
 	currentFilepath: string,
-): AutocompleteContextSnippet[] {
-	return includeImports
-		? imports.map(
-				(importStatement, index): AutocompleteContextSnippet => ({
-					type: AutocompleteSnippetType.Context,
-					content: importStatement,
-					filepath: `context://imports/${getUriPathBasename(currentFilepath)}#${index}`,
-				}),
-			)
+): AutocompleteContextSnippet[] =>
+	includeImports
+		? imports.map((importStatement, index) => ({
+				type: AutocompleteSnippetType.Context,
+				content: importStatement,
+				filepath: `context://imports/${getUriPathBasename(currentFilepath)}#${index}`,
+			}))
 		: []
-}
 
-function generateDefinitionSnippets(
+export const generateDefinitionSnippets = (
 	definitions: CodeContextDefinition[],
 	includeDefinitions: boolean,
-): AutocompleteCodeSnippet[] {
-	return includeDefinitions
-		? definitions.map(
-				(def: CodeContextDefinition): AutocompleteCodeSnippet => ({
-					type: AutocompleteSnippetType.Code,
-					filepath: def.filepath,
-					content: def.content,
-					// language: def.language // Language is not on CodeContextDefinition, derived from main file or filepath extension if needed by template
-				}),
-			)
+): AutocompleteCodeSnippet[] =>
+	includeDefinitions
+		? definitions.map((def: CodeContextDefinition) => ({
+				type: AutocompleteSnippetType.Code,
+				filepath: def.filepath,
+				content: def.content,
+				// language: def.language // Language is not on CodeContextDefinition, derived from main file or filepath extension if needed by template
+			}))
 		: []
-}
