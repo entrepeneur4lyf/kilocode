@@ -175,7 +175,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 
 		// Local state for throttling
 		let throttleTimeout: NodeJS.Timeout | null = null
-		let pendingEditor: vscode.TextEditor | null = null
 
 		// Function to check if the request has been cancelled
 
@@ -227,9 +226,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 					clearTimeout(throttleTimeout)
 				}
 
-				// Store the pending editor
-				pendingEditor = editor || null
-
 				// Check if first line is complete (has a newline)
 				if (!firstLineComplete && completion.includes("\n")) {
 					firstLineComplete = true
@@ -245,7 +241,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 				} else {
 					// Set a new throttle timeout
 					throttleTimeout = setTimeout(() => {
-						if (pendingEditor && pendingEditor.document === document) {
+						if (editor && editor.document === document) {
 							// If first line is complete, update state based on current completion
 
 							if (firstLineComplete) {
