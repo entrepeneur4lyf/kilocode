@@ -171,7 +171,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		let completion = ""
 		let isCancelled = false
 		let firstLineComplete = false
-		let firstLine_asdf = ""
 		let remainingLines = ""
 
 		// Local state for throttling
@@ -234,11 +233,10 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 				// Check if first line is complete (has a newline)
 				if (!firstLineComplete && completion.includes("\n")) {
 					firstLineComplete = true
-					firstLine_asdf = currentFirstLine
 					remainingLines = currentRemainingLines
 
 					// Store the first line and remaining lines
-					firstLinePreview = firstLine_asdf
+					firstLinePreview = currentFirstLine
 					remainingLinesPreview = remainingLines
 					isShowingAutocompletePreview = true
 
