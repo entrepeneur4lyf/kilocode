@@ -427,7 +427,7 @@ export function getTemplateForModel(model: string): AutocompleteTemplate {
 		return stableCodeFimTemplate
 	}
 
-	if (lowerCaseModel.includes("gemini") || lowerCaseModel.includes("codestral")) {
+	if (lowerCaseModel.includes("codestral")) {
 		return codestralMultifileFimTemplate
 	}
 
