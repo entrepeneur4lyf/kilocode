@@ -13,6 +13,7 @@ import { generateImportSnippets, generateDefinitionSnippets } from "./context/sn
 export const DEFAULT_DEBOUNCE_DELAY = 150
 const DEFAULT_MODEL = "mistralai/codestral-2501" // or google/gemini-2.5-flash-preview
 const MIN_TYPED_LENGTH_FOR_COMPLETION = 4
+const AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY = "kilo-code.autocompletePreviewVisible"
 
 export class AutocompleteProvider implements vscode.InlineCompletionItemProvider {
 	// API and completion state
@@ -20,10 +21,8 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 	private enabled: boolean = true
 	private activeCompletionId: string | null = null
 
-	// Throttling and debouncing
-	private throttleTimeout: NodeJS.Timeout | null = null
+	// Debouncing configuration
 	private debounceDelay: number = DEFAULT_DEBOUNCE_DELAY
-	private pendingEditor: vscode.TextEditor | null = null
 
 	// Core services
 	private readonly cache: CompletionCache
@@ -32,14 +31,11 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 	private readonly config: AutocompleteConfig
 
 	// Preview display state
-	private currentAutocompletePreview: string = ""
 	private firstLinePreview: string = ""
 	private remainingLinesPreview: string = ""
 	private hasAcceptedFirstLine: boolean = false
 	private isShowingAutocompletePreview: boolean = false
 	private isLoadingCompletion: boolean = false
-	private autocompletePreviewVisibleContextKey: string = "kilo-code.autocompletePreviewVisible"
-	private onCursorMoveCallback: ((editor: vscode.TextEditor) => void) | null = null
 
 	// Inline completion provider registration
 	private inlineCompletionProviderDisposable: vscode.Disposable | null = null
@@ -125,7 +121,7 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 				const item = new vscode.InlineCompletionItem(this.remainingLinesPreview)
 				item.command = { command: "editor.action.inlineSuggest.commit", title: "Accept Completion" }
 				this.isShowingAutocompletePreview = true
-				vscode.commands.executeCommand("setContext", this.autocompletePreviewVisibleContextKey, true)
+				vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, true)
 				return [item]
 			}
 
@@ -154,7 +150,7 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 			// Set command to ensure VS Code knows this is a completion that can be accepted with Tab
 			item.command = { command: "editor.action.inlineSuggest.commit", title: "Accept Completion" }
 			this.isShowingAutocompletePreview = true
-			vscode.commands.executeCommand("setContext", this.autocompletePreviewVisibleContextKey, true)
+			vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, true)
 
 			return [item]
 		} catch (error) {
@@ -401,7 +397,6 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 	public clearAutocompletePreview() {
 		this.isShowingAutocompletePreview = false
 		this.isLoadingCompletion = false
-		this.currentAutocompletePreview = ""
 		this.firstLinePreview = ""
 		this.remainingLinesPreview = ""
 		this.hasAcceptedFirstLine = false
@@ -414,7 +409,7 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		}
 
 		// Update the context for keybindings
-		vscode.commands.executeCommand("setContext", this.autocompletePreviewVisibleContextKey, false)
+		vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, false)
 
 		// Hide any active inline suggestions
 		vscode.commands.executeCommand("editor.action.inlineSuggest.hide")
@@ -435,6 +430,10 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		let firstLineComplete = false
 		let firstLine = ""
 		let remainingLines = ""
+
+		// Local state for throttling
+		let throttleTimeout: NodeJS.Timeout | null = null
+		let pendingEditor: vscode.TextEditor | null = null
 
 		// Function to check if the request has been cancelled
 		const checkCancellation = () => {
@@ -488,12 +487,12 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 					splitCompletion(completion)
 
 				// If we have a throttle timeout already, clear it
-				if (this.throttleTimeout) {
-					clearTimeout(this.throttleTimeout)
+				if (throttleTimeout) {
+					clearTimeout(throttleTimeout)
 				}
 
 				// Store the pending editor
-				this.pendingEditor = editor || null
+				pendingEditor = editor || null
 
 				// Check if first line is complete (has a newline)
 				if (!firstLineComplete && completion.includes("\n")) {
@@ -510,8 +509,8 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 					vscode.commands.executeCommand("editor.action.inlineSuggest.trigger")
 				} else {
 					// Set a new throttle timeout
-					this.throttleTimeout = setTimeout(() => {
-						if (this.pendingEditor && this.pendingEditor.document === document) {
+					throttleTimeout = setTimeout(() => {
+						if (pendingEditor && pendingEditor.document === document) {
 							// If first line is complete, update state based on current completion
 							if (firstLineComplete) {
 								if (!this.hasAcceptedFirstLine) {
@@ -531,7 +530,7 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 								vscode.commands.executeCommand("editor.action.inlineSuggest.trigger")
 							}
 						}
-						this.throttleTimeout = null
+						throttleTimeout = null
 					}, this.debounceDelay)
 				}
 			}
@@ -542,13 +541,18 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 			editor.setDecorations(this.streamingDecorationType, [])
 		}
 
+		// Clean up any pending throttle timeout
+		if (throttleTimeout) {
+			clearTimeout(throttleTimeout)
+		}
+
 		// Final update to ensure we have the correct split
 		const { firstLine: finalFirstLine, remainingLines: finalRemainingLines } = splitCompletion(completion)
 		this.firstLinePreview = finalFirstLine
 		this.remainingLinesPreview = finalRemainingLines
 
 		// Set context for keybindings
-		vscode.commands.executeCommand("setContext", this.autocompletePreviewVisibleContextKey, true)
+		vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, true)
 
 		return { completion, isCancelled }
 	}
@@ -630,12 +634,6 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 	 * Cleans up resources when the provider is no longer needed
 	 */
 	public dispose() {
-		// Clear any throttle timeout
-		if (this.throttleTimeout) {
-			clearTimeout(this.throttleTimeout)
-			this.throttleTimeout = null
-		}
-
 		// Clear any active preview text
 		if (this.isShowingAutocompletePreview) {
 			this.clearAutocompletePreview()
