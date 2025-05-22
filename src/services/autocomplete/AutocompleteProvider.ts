@@ -11,7 +11,7 @@ import { generateImportSnippets, generateDefinitionSnippets } from "./context/sn
 
 // Default configuration values
 export const DEFAULT_DEBOUNCE_DELAY = 150
-const DEFAULT_MODEL = "google/gemini-2.5-flash-preview" // mistralai/codestral-2501 may be faster/better?
+const DEFAULT_MODEL = "mistralai/codestral-2501" // or google/gemini-2.5-flash-preview
 const MIN_TYPED_LENGTH_FOR_COMPLETION = 4
 
 export class AutocompleteProvider implements vscode.InlineCompletionItemProvider {
