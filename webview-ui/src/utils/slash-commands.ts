@@ -27,7 +27,7 @@ export function getSupportedSlashCommands(customModes?: any[]): SlashCommand[] {
 	// Add mode-switching commands dynamically
 	const modeCommands = getAllModes(customModes).map((mode) => ({
 		name: mode.slug,
-		description: `Switch to ${mode.name.replace(/^[💻🏗️❓🪲🪃]+ /, "")} mode`,
+		description: `Switch to ${mode.name.replace(/^[��️❓��]+ /, "")} mode`,
 	}))
 
 	return [...baseCommands, ...modeCommands]

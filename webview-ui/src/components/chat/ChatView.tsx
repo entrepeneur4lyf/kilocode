@@ -295,6 +295,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 							setClineAsk("report_bug")
 							setEnableButtons(!isPartial)
 							setPrimaryButtonText(t("chat:reportBug.title"))
+							setSecondaryButtonText(undefined)
 							break
 						case "condense":
 							setSendingDisabled(isPartial)
