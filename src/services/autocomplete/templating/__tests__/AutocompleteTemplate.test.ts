@@ -16,7 +16,7 @@ describe("getTemplateForModel", () => {
 				"<fim_suffix>",
 				"<fim_middle>",
 				"<file_sep>",
-				"<|endoftext|>",
+				"<|endo" + "ftext|>",
 				"</fim_middle>",
 				"</code>",
 			],
