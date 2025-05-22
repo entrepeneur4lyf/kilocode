@@ -594,6 +594,8 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		// Dispose of the decorator types
 		loadingDecorationType.dispose()
 		streamingDecorationType.dispose()
+		// Reset the context when disposing
+		vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, false)
 	}
 
 	const register = (context: vscode.ExtensionContext): vscode.Disposable => {
@@ -632,8 +634,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 	context.subscriptions.push({
 		dispose: () => {
 			disposable.dispose()
-			// Reset the context when disposing
-			vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, false)
 		},
 	})
 }
