@@ -8,6 +8,7 @@ import {
 	AIResponse,
 	TriggerType,
 } from "./types"
+import { MultiSearchReplaceDiffStrategy } from "../../core/diff/strategies/multi-search-replace"
 
 /**
  * Interface for a diff edit
@@ -1213,197 +1214,74 @@ export const applySearchReplaceEdits = async (
 			documentUri = fileDocument.uri
 			const documentPath = vscode.workspace.asRelativePath(documentUri)
 
-			// Create a workspace edit for this file
-			const edit = new vscode.WorkspaceEdit()
-			let fileSuccess = false
+			// Create a new instance of MultiSearchReplaceDiffStrategy with default settings
+			const diffStrategy = new MultiSearchReplaceDiffStrategy(0.9, 40) // 90% similarity threshold, 40 buffer lines
 
-			for (const diffEdit of fileEdits) {
-				// Each edit should have exactly two blocks: SEARCH and REPLACE
-				if (diffEdit.blocks.length !== 2) {
-					continue
-				}
+			// Convert NewDiffEdit[] to a format that MultiSearchReplaceDiffStrategy can use
+			let diffContent = ""
 
-				const searchBlock = diffEdit.blocks.find((block) => block.type === "SEARCH")
-				const replaceBlock = diffEdit.blocks.find((block) => block.type === "REPLACE")
+			// Build the diff content in the format expected by MultiSearchReplaceDiffStrategy
+			for (const edit of fileEdits) {
+				const searchBlock = edit.blocks.find((block) => block.type === "SEARCH")
+				const replaceBlock = edit.blocks.find((block) => block.type === "REPLACE")
 
 				if (!searchBlock || !replaceBlock) {
 					continue
 				}
 
-				// Find the search text in the document using progressively more fuzzy matching
-				const searchText = searchBlock.content
-
-				// 1. Try exact match first
-				if (documentContent.includes(searchText)) {
-					console.log(`[WatchMode DEBUG] Found exact match in ${documentPath}`)
-
-					// Check if the search text appears multiple times
-					const regex = new RegExp(escapeRegExp(searchText), "g")
-					const matches = documentContent.match(regex)
-
-					if (matches && matches.length > 1) {
-						console.log(
-							`[WatchMode DEBUG] Warning: Search text appears ${matches.length} times in ${documentPath}`,
-						)
-						// Continue anyway, but use the first occurrence
-					}
-
-					const range = new vscode.Range(
-						fileDocument.positionAt(documentContent.indexOf(searchText)),
-						fileDocument.positionAt(documentContent.indexOf(searchText) + searchText.length),
-					)
-
-					edit.replace(documentUri, range, replaceBlock.content)
-					fileSuccess = true
-					continue
-				}
-
-				// 2. Try with normalized whitespace
-				const normalizedSearch = searchText.replace(/\s+/g, " ").trim()
-				const normalizedContent = documentContent.replace(/\s+/g, " ").trim()
-
-				if (normalizedContent.includes(normalizedSearch)) {
-					console.log(`[WatchMode DEBUG] Found match with normalized whitespace in ${documentPath}`)
-
-					// Find the position in normalized content
-					const startPos = normalizedContent.indexOf(normalizedSearch)
-					const endPos = startPos + normalizedSearch.length
-
-					// Map back to original content positions
-					let originalStartPos = 0
-					let originalEndPos = 0
-					let normalizedPos = 0
-
-					for (let i = 0; i < documentContent.length; i++) {
-						const char = documentContent[i]
-						if (
-							!/\s/.test(char) ||
-							(i > 0 && /\S/.test(documentContent[i - 1]) && /\S/.test(documentContent[i + 1]))
-						) {
-							if (normalizedPos === startPos) {
-								originalStartPos = i
-							}
-							if (normalizedPos === endPos) {
-								originalEndPos = i
-								break
-							}
-							normalizedPos++
-						}
-					}
-
-					// If we couldn't map back properly, use a more approximate approach
-					if (originalEndPos <= originalStartPos) {
-						// Find a unique substring from the search text
-						const uniqueSubstring = findUniqueSubstring(searchText, documentContent)
-						if (uniqueSubstring) {
-							const substringPos = documentContent.indexOf(uniqueSubstring)
-							if (substringPos >= 0) {
-								// Expand around the unique substring to find the best match
-								const [expandedStart, expandedEnd] = expandAroundMatch(
-									documentContent,
-									substringPos,
-									substringPos + uniqueSubstring.length,
-									searchText,
-								)
-								originalStartPos = expandedStart
-								originalEndPos = expandedEnd
-							}
-						}
-					}
-
-					if (originalEndPos > originalStartPos) {
-						const range = new vscode.Range(
-							fileDocument.positionAt(originalStartPos),
-							fileDocument.positionAt(originalEndPos),
-						)
-
-						edit.replace(documentUri, range, replaceBlock.content)
-						fileSuccess = true
-						continue
-					}
-				}
-
-				// 3. Try case-insensitive match
-				const lowerSearch = searchText.toLowerCase()
-				const lowerContent = documentContent.toLowerCase()
-
-				if (lowerContent.includes(lowerSearch)) {
-					console.log(`[WatchMode DEBUG] Found case-insensitive match in ${documentPath}`)
-
-					const startPos = lowerContent.indexOf(lowerSearch)
-					const endPos = startPos + lowerSearch.length
-
-					const range = new vscode.Range(fileDocument.positionAt(startPos), fileDocument.positionAt(endPos))
-
-					edit.replace(documentUri, range, replaceBlock.content)
-					fileSuccess = true
-					continue
-				}
-
-				// 4. Try with leading/trailing empty lines normalization
-				const trimmedSearch = searchText.trim()
-				const documentLines = documentContent.split("\n")
-
-				// Find non-empty lines in the document
-				let startLine = 0
-				while (startLine < documentLines.length && documentLines[startLine].trim() === "") {
-					startLine++
-				}
-
-				let endLine = documentLines.length - 1
-				while (endLine >= 0 && documentLines[endLine].trim() === "") {
-					endLine--
-				}
-
-				// Extract the content without leading/trailing empty lines
-				const trimmedDocumentLines = documentLines.slice(startLine, endLine + 1)
-				const trimmedDocument = trimmedDocumentLines.join("\n")
-
-				console.log(`[WatchMode DEBUG] Trying with trimmed leading/trailing empty lines in ${documentPath}`)
-
-				if (trimmedDocument.includes(trimmedSearch)) {
-					console.log(
-						`[WatchMode DEBUG] Found match after trimming leading/trailing empty lines in ${documentPath}`,
-					)
-
-					// Find the position in trimmed document
-					const startPos = trimmedDocument.indexOf(trimmedSearch)
-
-					// Map back to original content positions
-					const originalStartPos = documentContent.indexOf(trimmedDocument) + startPos
-					const originalEndPos = originalStartPos + trimmedSearch.length
-
-					const range = new vscode.Range(
-						fileDocument.positionAt(originalStartPos),
-						fileDocument.positionAt(originalEndPos),
-					)
-
-					edit.replace(documentUri, range, replaceBlock.content)
-					fileSuccess = true
-					continue
-				}
-
-				console.log(`[WatchMode DEBUG] Search text not found in document: ${searchText.substring(0, 50)}...`)
+				diffContent += "<<<<<<< SEARCH\n"
+				diffContent += ":start_line:0\n" // Use 0 to let the strategy find the best match
+				diffContent += "-------\n"
+				diffContent += searchBlock.content + "\n"
+				diffContent += "=======\n"
+				diffContent += replaceBlock.content + "\n"
+				diffContent += ">>>>>>> REPLACE\n\n"
 			}
 
-			if (fileSuccess) {
-				const success = await vscode.workspace.applyEdit(edit)
-				console.log(`[WatchMode DEBUG] Applied changes to ${documentPath}: ${success ? "SUCCESS" : "FAILED"}`)
+			if (diffContent === "") {
+				console.log(`[WatchMode DEBUG] No valid edits found for file ${filePath}`)
+				continue
+			}
 
-				if (success) {
-					// Save the file after modifying it
-					try {
-						await fileDocument.save()
-						console.log(`[WatchMode DEBUG] Saved file ${documentPath}`)
-					} catch (error) {
-						console.error(`[WatchMode DEBUG] Error saving file ${documentPath}:`, error)
-						overallSuccess = false
+			// Apply the diff using MultiSearchReplaceDiffStrategy
+			const result = await diffStrategy.applyDiff(documentContent, diffContent)
+
+			if (!result.success) {
+				console.error(`[WatchMode DEBUG] Failed to apply diff to ${filePath}:`, result.error || "Unknown error")
+				if (result.failParts && result.failParts.length > 0) {
+					for (const part of result.failParts) {
+						// Check if the part has an error property (only on failed parts)
+						if (!part.success && part.error) {
+							console.error("[WatchMode DEBUG] Diff part failed:", part.error)
+						}
 					}
-				} else {
+				}
+				overallSuccess = false
+				continue
+			}
+
+			// Apply the changes to the document
+			const edit = new vscode.WorkspaceEdit()
+			const fullRange = new vscode.Range(
+				new vscode.Position(0, 0),
+				fileDocument.positionAt(documentContent.length),
+			)
+
+			edit.replace(documentUri, fullRange, result.content!)
+			const success = await vscode.workspace.applyEdit(edit)
+
+			console.log(`[WatchMode DEBUG] Applied changes to ${documentPath}: ${success ? "SUCCESS" : "FAILED"}`)
+
+			if (success) {
+				// Save the file after modifying it
+				try {
+					await fileDocument.save()
+					console.log(`[WatchMode DEBUG] Saved file ${documentPath}`)
+				} catch (error) {
+					console.error(`[WatchMode DEBUG] Error saving file ${documentPath}:`, error)
 					overallSuccess = false
 				}
 			} else {
-				console.log(`[WatchMode DEBUG] No matches found in ${documentPath}`)
 				overallSuccess = false
 			}
 		}
@@ -1415,99 +1293,6 @@ export const applySearchReplaceEdits = async (
 	}
 }
 
-/**
- * Finds a unique substring from the search text that appears only once in the content
- * @param searchText The search text
- * @param content The document content
- * @returns A unique substring or null if none found
- */
-function findUniqueSubstring(searchText: string, content: string): string | null {
-	// First try with the trimmed search text
-	const trimmedSearch = searchText.trim()
-	if (trimmedSearch !== searchText) {
-		// Check if the trimmed version appears exactly once
-		const trimmedRegex = new RegExp(escapeRegExp(trimmedSearch), "g")
-		const trimmedMatches = content.match(trimmedRegex)
-
-		if (trimmedMatches && trimmedMatches.length === 1) {
-			return trimmedSearch
-		}
-	}
-
-	// Try different lengths of substrings
-	for (let length = Math.min(searchText.length, 40); length >= 10; length--) {
-		for (let i = 0; i <= searchText.length - length; i++) {
-			const substring = searchText.substring(i, i + length)
-			if (substring.trim().length < 5) continue // Skip very short substrings
-
-			// Check if this substring appears exactly once
-			const regex = new RegExp(escapeRegExp(substring), "g")
-			const matches = content.match(regex)
-
-			if (matches && matches.length === 1) {
-				return substring
-			}
-		}
-	}
-
-	return null
-}
-
-/**
- * Expands a match to find the best boundaries
- * @param content The document content
- * @param startPos The starting position of the match
- * @param endPos The ending position of the match
- * @param searchText The original search text
- * @returns The expanded start and end positions
- */
-function expandAroundMatch(content: string, startPos: number, endPos: number, searchText: string): [number, number] {
-	// Try to expand to line boundaries
-	let expandedStart = startPos
-	while (expandedStart > 0 && content[expandedStart - 1] !== "\n") {
-		expandedStart--
-	}
-
-	let expandedEnd = endPos
-	while (expandedEnd < content.length && content[expandedEnd] !== "\n") {
-		expandedEnd++
-	}
-
-	// If the expanded text is too different from the search text, revert to original
-	const expandedText = content.substring(expandedStart, expandedEnd)
-	const similarity = calculateSimilarity(expandedText, searchText)
-
-	if (similarity < 0.5) {
-		return [startPos, endPos]
-	}
-
-	return [expandedStart, expandedEnd]
-}
-
-/**
- * Calculates a simple similarity score between two strings
- * @param a First string
- * @param b Second string
- * @returns Similarity score between 0 and 1
- */
-function calculateSimilarity(a: string, b: string): number {
-	const longer = a.length > b.length ? a : b
-	const shorter = a.length > b.length ? b : a
-
-	if (longer.length === 0) {
-		return 1.0
-	}
-
-	// Count matching characters
-	let matches = 0
-	for (let i = 0; i < shorter.length; i++) {
-		if (longer.includes(shorter[i])) {
-			matches++
-		}
-	}
-
-	return matches / longer.length
-}
 
 /**
  * Maximum number of reflection attempts for failed edits
