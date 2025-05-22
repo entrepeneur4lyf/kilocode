@@ -95,8 +95,6 @@ export class PromptRenderer {
 			: "my-repository" // AIDIFF: Default reponame
 		const workspaceUris = workspaceFolders?.map((folder) => folder.uri.toString()) || []
 
-		// Snippet generation is now handled externally and passed in.
-		// const snippets: AutocompleteSnippet[] = [] // Removed inline snippet generation
 
 		// PLANREF: continue/core/autocomplete/templating/index.ts (compilePrefixSuffix logic)
 		if (currentTemplate.compilePrefixSuffix) {
