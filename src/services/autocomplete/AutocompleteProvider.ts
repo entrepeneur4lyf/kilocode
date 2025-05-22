@@ -18,214 +18,213 @@ const AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY = "kilo-code.autocompletePreviewV
 export function hookAutocomplete(context: vscode.ExtensionContext) {
 	try {
 		// Initialize the autocomplete preview text visibility context to false
-		vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, false)
-
-		// Shared state encapsulated in closure
-		let enabled = true
-		let activeCompletionId: string | null = null
-		let debounceDelay = DEFAULT_DEBOUNCE_DELAY
-
-		// Preview state
-		let firstLinePreview = ""
-		let remainingLinesPreview = ""
-		let hasAcceptedFirstLine = false
-		let isShowingAutocompletePreview = false
-		let isLoadingCompletion = false
-
-		// Core services - created once
-		const cache = new CompletionCache()
-		const config = new AutocompleteConfig()
-		const contextGatherer = new ContextGatherer()
-		const promptRenderer = new PromptRenderer({}, DEFAULT_MODEL)
-
-		const kilocodeToken = ContextProxy.instance.getProviderSettings().kilocodeToken
-		const apiHandler = buildApiHandler({
-			apiProvider: "kilocode",
-			kilocodeToken: kilocodeToken,
-			kilocodeModel: DEFAULT_MODEL,
-		})
-
-		// Decoration types
-		const loadingDecorationType = vscode.window.createTextEditorDecorationType({
-			after: {
-				color: new vscode.ThemeColor("editorGhostText.foreground"),
-				fontStyle: "italic",
-				contentText: "⏳",
-			},
-			rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen,
-		})
-
-		const streamingDecorationType = vscode.window.createTextEditorDecorationType({
-			after: {
-				color: new vscode.ThemeColor("editorGhostText.foreground"),
-				fontStyle: "italic",
-				contentText: "⌛",
-			},
-			rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen,
-		})
-
-		// Helper functions
-		const clearAutocompletePreview = () => {
-			isShowingAutocompletePreview = false
-			isLoadingCompletion = false
-			firstLinePreview = ""
-			remainingLinesPreview = ""
-			hasAcceptedFirstLine = false
-
-			// Clear loading indicators
-			const editor = vscode.window.activeTextEditor
-			if (editor) {
-				editor.setDecorations(loadingDecorationType, [])
-				editor.setDecorations(streamingDecorationType, [])
-			}
-
-			// Update the context for keybindings
-			vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, false)
-
-			// Hide any active inline suggestions
-			vscode.commands.executeCommand("editor.action.inlineSuggest.hide")
-		}
-
-		const showStreamingIndicator = (editor: vscode.TextEditor) => {
-			const position = editor.selection.active
-			const decoration: vscode.DecorationOptions = {
-				range: new vscode.Range(position, position),
-			}
-			editor.setDecorations(streamingDecorationType, [decoration])
-		}
-
-		const cleanMarkdownCodeBlocks = (text: string): string => {
-			// Handle complete code blocks
-			let cleanedText = text.replace(/```[\w-]*\n([\s\S]*?)\n```/g, "$1")
-
-			// Handle opening code block markers at the beginning of a chunk
-			cleanedText = cleanedText.replace(/^```[\w-]*\n/g, "")
-
-			// Handle opening code block markers in the middle of a chunk
-			cleanedText = cleanedText.replace(/\n```[\w-]*\n/g, "\n")
-
-			// Handle closing code block markers
-			cleanedText = cleanedText.replace(/\n```$/g, "")
-
-			// Handle any remaining backticks that might be part of incomplete code blocks
-			cleanedText = cleanedText.replace(/```[\w-]*$/g, "")
-
-			// Trim any leading/trailing whitespace that might be left over
-			return cleanedText.trim()
-		}
-
-		const isFileDisabled = (document: vscode.TextDocument): boolean => {
-			const vscodeConfig = vscode.workspace.getConfiguration("kilo-code")
-			const disabledPatterns = vscodeConfig.get<string>("autocomplete.disableInFiles") || ""
-			const patterns = disabledPatterns
-				.split(",")
-				.map((p) => p.trim())
-				.filter(Boolean)
-
-			return patterns.some((pattern) => {
-				const glob = new vscode.RelativePattern(
-					vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "",
-					pattern,
-				)
-				return vscode.languages.match({ pattern: glob }, document)
-			})
-		}
-
-		const validateCompletionContext = (
-			context: vscode.InlineCompletionContext,
-			document: vscode.TextDocument,
-			position: vscode.Position,
-		): boolean => {
-			if (context.triggerKind === vscode.InlineCompletionTriggerKind.Invoke) {
-				return true
-			}
-			const activeEditor = vscode.window.activeTextEditor
-			const currentPosition =
-				activeEditor && activeEditor.document.uri === document.uri ? activeEditor.selection.active : position
-
-			const lineText = document.lineAt(
-				context.selectedCompletionInfo?.range.start.line ?? currentPosition.line,
-			).text
-			const textBeforeCursor = lineText.substring(
-				0,
-				context.selectedCompletionInfo?.range.start.character ?? currentPosition.character,
-			)
-			if (
-				context.triggerKind === vscode.InlineCompletionTriggerKind.Automatic &&
-				textBeforeCursor.trim().length < MIN_TYPED_LENGTH_FOR_COMPLETION
-			) {
-				return false
-			}
-			return true
-		}
-
-		// Main provider implementation
-		const provider = new AutocompleteProvider(
-			// Dependencies
-			{ apiHandler, cache, config, contextGatherer, promptRenderer },
-			// State accessors
-			{
-				isEnabled: () => enabled,
-				setEnabled: (value: boolean) => {
-					enabled = value
-				},
-				getDebounceDelay: () => debounceDelay,
-				setDebounceDelay: (value: number) => {
-					debounceDelay = value
-				},
-				getActiveCompletionId: () => activeCompletionId,
-				setActiveCompletionId: (id: string | null) => {
-					activeCompletionId = id
-				},
-				getPreviewState: () => ({
-					firstLinePreview,
-					remainingLinesPreview,
-					hasAcceptedFirstLine,
-					isShowingAutocompletePreview,
-					isLoadingCompletion,
-				}),
-				setPreviewState: (
-					state: Partial<{
-						firstLinePreview: string
-						remainingLinesPreview: string
-						hasAcceptedFirstLine: boolean
-						isShowingAutocompletePreview: boolean
-						isLoadingCompletion: boolean
-					}>,
-				) => {
-					if (state.firstLinePreview !== undefined) firstLinePreview = state.firstLinePreview
-					if (state.remainingLinesPreview !== undefined) remainingLinesPreview = state.remainingLinesPreview
-					if (state.hasAcceptedFirstLine !== undefined) hasAcceptedFirstLine = state.hasAcceptedFirstLine
-					if (state.isShowingAutocompletePreview !== undefined)
-						isShowingAutocompletePreview = state.isShowingAutocompletePreview
-					if (state.isLoadingCompletion !== undefined) isLoadingCompletion = state.isLoadingCompletion
-				},
-			},
-			// Helpers
-			{
-				clearAutocompletePreview,
-				showStreamingIndicator,
-				cleanMarkdownCodeBlocks,
-				isFileDisabled,
-				validateCompletionContext,
-				loadingDecorationType,
-				streamingDecorationType,
-			},
-		)
-
-		const disposable = provider.register(context)
-
-		// Subscribe to cleanup
-		context.subscriptions.push({
-			dispose: () => {
-				disposable.dispose()
-				// Reset the context when disposing
-				vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, false)
-			},
-		})
+		hookAutocompleteInner(context)
 	} catch (error) {
 		console.error("Failed to register autocomplete provider:", error)
 	}
+}
+
+function hookAutocompleteInner(context: vscode.ExtensionContext) {
+	vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, false)
+
+	// Shared state encapsulated in closure
+	let enabled = true
+	let activeCompletionId: string | null = null
+	let debounceDelay = DEFAULT_DEBOUNCE_DELAY
+
+	// Preview state
+	let firstLinePreview = ""
+	let remainingLinesPreview = ""
+	let hasAcceptedFirstLine = false
+	let isShowingAutocompletePreview = false
+	let isLoadingCompletion = false
+
+	// Core services - created once
+	const cache = new CompletionCache()
+	const config = new AutocompleteConfig()
+	const contextGatherer = new ContextGatherer()
+	const promptRenderer = new PromptRenderer({}, DEFAULT_MODEL)
+
+	const kilocodeToken = ContextProxy.instance.getProviderSettings().kilocodeToken
+	const apiHandler = buildApiHandler({
+		apiProvider: "kilocode",
+		kilocodeToken: kilocodeToken,
+		kilocodeModel: DEFAULT_MODEL,
+	})
+
+	// Decoration types
+	const loadingDecorationType = vscode.window.createTextEditorDecorationType({
+		after: {
+			color: new vscode.ThemeColor("editorGhostText.foreground"),
+			fontStyle: "italic",
+			contentText: "⏳",
+		},
+		rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen,
+	})
+
+	const streamingDecorationType = vscode.window.createTextEditorDecorationType({
+		after: {
+			color: new vscode.ThemeColor("editorGhostText.foreground"),
+			fontStyle: "italic",
+			contentText: "⌛",
+		},
+		rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen,
+	})
+
+	// Helper functions
+	const clearAutocompletePreview = () => {
+		isShowingAutocompletePreview = false
+		isLoadingCompletion = false
+		firstLinePreview = ""
+		remainingLinesPreview = ""
+		hasAcceptedFirstLine = false
+
+		// Clear loading indicators
+		const editor = vscode.window.activeTextEditor
+		if (editor) {
+			editor.setDecorations(loadingDecorationType, [])
+			editor.setDecorations(streamingDecorationType, [])
+		}
+
+		// Update the context for keybindings
+		vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, false)
+
+		// Hide any active inline suggestions
+		vscode.commands.executeCommand("editor.action.inlineSuggest.hide")
+	}
+
+	const showStreamingIndicator = (editor: vscode.TextEditor) => {
+		const position = editor.selection.active
+		const decoration: vscode.DecorationOptions = {
+			range: new vscode.Range(position, position),
+		}
+		editor.setDecorations(streamingDecorationType, [decoration])
+	}
+
+	const cleanMarkdownCodeBlocks = (text: string): string => {
+		// Handle complete code blocks
+		let cleanedText = text.replace(/```[\w-]*\n([\s\S]*?)\n```/g, "$1")
+
+		// Handle opening code block markers at the beginning of a chunk
+		cleanedText = cleanedText.replace(/^```[\w-]*\n/g, "")
+
+		// Handle opening code block markers in the middle of a chunk
+		cleanedText = cleanedText.replace(/\n```[\w-]*\n/g, "\n")
+
+		// Handle closing code block markers
+		cleanedText = cleanedText.replace(/\n```$/g, "")
+
+		// Handle any remaining backticks that might be part of incomplete code blocks
+		cleanedText = cleanedText.replace(/```[\w-]*$/g, "")
+
+		// Trim any leading/trailing whitespace that might be left over
+		return cleanedText.trim()
+	}
+
+	const isFileDisabled = (document: vscode.TextDocument): boolean => {
+		const vscodeConfig = vscode.workspace.getConfiguration("kilo-code")
+		const disabledPatterns = vscodeConfig.get<string>("autocomplete.disableInFiles") || ""
+		const patterns = disabledPatterns
+			.split(",")
+			.map((p) => p.trim())
+			.filter(Boolean)
+
+		return patterns.some((pattern) => {
+			const glob = new vscode.RelativePattern(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "", pattern)
+			return vscode.languages.match({ pattern: glob }, document)
+		})
+	}
+
+	const validateCompletionContext = (
+		context: vscode.InlineCompletionContext,
+		document: vscode.TextDocument,
+		position: vscode.Position,
+	): boolean => {
+		if (context.triggerKind === vscode.InlineCompletionTriggerKind.Invoke) {
+			return true
+		}
+		const activeEditor = vscode.window.activeTextEditor
+		const currentPosition =
+			activeEditor && activeEditor.document.uri === document.uri ? activeEditor.selection.active : position
+
+		const lineText = document.lineAt(context.selectedCompletionInfo?.range.start.line ?? currentPosition.line).text
+		const textBeforeCursor = lineText.substring(
+			0,
+			context.selectedCompletionInfo?.range.start.character ?? currentPosition.character,
+		)
+		if (
+			context.triggerKind === vscode.InlineCompletionTriggerKind.Automatic &&
+			textBeforeCursor.trim().length < MIN_TYPED_LENGTH_FOR_COMPLETION
+		) {
+			return false
+		}
+		return true
+	}
+
+	// Main provider implementation
+	const provider = new AutocompleteProvider(
+		// Dependencies
+		{ apiHandler, cache, config, contextGatherer, promptRenderer },
+		// State accessors
+		{
+			isEnabled: () => enabled,
+			setEnabled: (value: boolean) => {
+				enabled = value
+			},
+			getDebounceDelay: () => debounceDelay,
+			setDebounceDelay: (value: number) => {
+				debounceDelay = value
+			},
+			getActiveCompletionId: () => activeCompletionId,
+			setActiveCompletionId: (id: string | null) => {
+				activeCompletionId = id
+			},
+			getPreviewState: () => ({
+				firstLinePreview,
+				remainingLinesPreview,
+				hasAcceptedFirstLine,
+				isShowingAutocompletePreview,
+				isLoadingCompletion,
+			}),
+			setPreviewState: (
+				state: Partial<{
+					firstLinePreview: string
+					remainingLinesPreview: string
+					hasAcceptedFirstLine: boolean
+					isShowingAutocompletePreview: boolean
+					isLoadingCompletion: boolean
+				}>,
+			) => {
+				if (state.firstLinePreview !== undefined) firstLinePreview = state.firstLinePreview
+				if (state.remainingLinesPreview !== undefined) remainingLinesPreview = state.remainingLinesPreview
+				if (state.hasAcceptedFirstLine !== undefined) hasAcceptedFirstLine = state.hasAcceptedFirstLine
+				if (state.isShowingAutocompletePreview !== undefined)
+					isShowingAutocompletePreview = state.isShowingAutocompletePreview
+				if (state.isLoadingCompletion !== undefined) isLoadingCompletion = state.isLoadingCompletion
+			},
+		},
+		// Helpers
+		{
+			clearAutocompletePreview,
+			showStreamingIndicator,
+			cleanMarkdownCodeBlocks,
+			isFileDisabled,
+			validateCompletionContext,
+			loadingDecorationType,
+			streamingDecorationType,
+		},
+	)
+
+	const disposable = provider.register(context)
+
+	// Subscribe to cleanup
+	context.subscriptions.push({
+		dispose: () => {
+			disposable.dispose()
+			// Reset the context when disposing
+			vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, false)
+		},
+	})
 }
 
 interface AutocompleteProviderDeps {
