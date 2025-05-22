@@ -11,14 +11,14 @@ export class SearchTextNotUnique extends Error {
 	}
 }
 
-// Regular expressions for detecting AI comments
+// Regular expressions for detecting KILO comments
 const createAICommentPatterns = (prefix: string) => [
-	// For single line comments: // AI! do something
-	new RegExp(`\\/\\/\\s*${prefix}(.+)$`, "gm"),
-	// For multi-line comments: /* AI! do something */
-	new RegExp(`\\/\\*\\s*${prefix}(.+?)\\*\\/`, "gms"),
-	// For inline comments: /** AI! do something */
-	new RegExp(`\\/\\*\\*\\s*${prefix}(.+?)\\*\\/`, "gms"),
+	// For single line comments: // KILO! do something (with or without space after //)
+	new RegExp(`\\/\\/\\s*.*?${prefix}(.*)$`, "gm"),
+	// For multi-line comments: /* KILO! do something */
+	new RegExp(`\\/\\*\\s*.*?${prefix}(.+?)\\*\\/`, "gms"),
+	// For inline comments: /** KILO! do something */
+	new RegExp(`\\/\\*\\*\\s*.*?${prefix}(.+?)\\*\\/`, "gms"),
 ]
 
 // Default to "KILO!" if no prefix is provided

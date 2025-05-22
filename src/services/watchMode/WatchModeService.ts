@@ -15,6 +15,12 @@ import {
 } from "./commentProcessor"
 import { WatchModeHighlighter } from "./WatchModeHighlighter"
 
+// Interface for document change event data
+interface DocumentChangeData {
+	document: vscode.TextDocument
+	isDocumentSave: boolean
+}
+
 /**
  * Service that watches files for changes and processes AI comments
  */
@@ -28,6 +34,10 @@ export class WatchModeService {
 	private highlighter: WatchModeHighlighter
 	private processingFiles: Set<string> = new Set()
 	private currentDebugId?: string
+	private documentListeners: vscode.Disposable[] = []
+	private staticHighlights: Map<string, () => void> = new Map()
+	private recentlyProcessedFiles: Map<string, number> = new Map()
+	private processingDebounceTime: number = 500 // ms to prevent duplicate processing
 
 	// Event emitters
 	private readonly _onDidChangeActiveState = new vscode.EventEmitter<boolean>()
@@ -158,7 +168,9 @@ export class WatchModeService {
 	 */
 	private initializeWatchers(): void {
 		this.disposeWatchers() // Clean up any existing watchers first
+		this.disposeDocumentListeners() // Clean up any existing document listeners
 
+		// Set up file system watchers for file save events
 		this.config.include.forEach((pattern) => {
 			const watcher = vscode.workspace.createFileSystemWatcher(
 				new vscode.RelativePattern(vscode.workspace.workspaceFolders?.[0]?.uri || "", pattern),
@@ -169,19 +181,13 @@ export class WatchModeService {
 
 			// Handle file creation events
 			watcher.onDidCreate((uri: vscode.Uri) =>
-				this.handleFileChange({
-					fileUri: uri,
-					type: vscode.FileChangeType.Created,
-				}),
+				this.handleFileChange({ fileUri: uri, type: vscode.FileChangeType.Created }),
 			)
 
-			// Handle file change events
+			// Handle file change events (file saves)
 			watcher.onDidChange((uri: vscode.Uri) => {
 				this.log(`File changed: ${uri.toString()}`)
-				return this.handleFileChange({
-					fileUri: uri,
-					type: vscode.FileChangeType.Changed,
-				})
+				return this.handleFileChange({ fileUri: uri, type: vscode.FileChangeType.Changed })
 			})
 
 			const watcherId = `watcher-${pattern}`
@@ -190,14 +196,80 @@ export class WatchModeService {
 
 			this.log(`Initialized file watcher for pattern: ${pattern}`)
 		})
+
+		// Set up document change listeners for real-time editing
+		const changeListener = vscode.workspace.onDidChangeTextDocument((event) => {
+			// Skip excluded files
+			if (this.isFileExcluded(event.document.uri)) {
+				return
+			}
+
+			// Process document changes as they happen (without debounce)
+			this.handleDocumentChange({ document: event.document, isDocumentSave: false })
+		})
+
+		// Set up document save listeners
+		const saveListener = vscode.workspace.onDidSaveTextDocument((document) => {
+			// Skip excluded files
+			if (this.isFileExcluded(document.uri)) {
+				return
+			}
+
+			// Process document saves
+			this.handleDocumentChange({ document: document, isDocumentSave: true })
+		})
+
+		this.documentListeners.push(changeListener, saveListener)
+		this.context.subscriptions.push(changeListener, saveListener)
+		this.log(`Initialized document change and save listeners`)
 	}
 
 	/**
-	 * Handles file change events
+	 * Handles document change events (typing or saving)
+	 * @param data Document change event data
+	 */
+	private handleDocumentChange(data: DocumentChangeData): void {
+		const { document, isDocumentSave } = data
+		const fileUri = document.uri
+		const fileKey = fileUri.toString()
+
+		// Clear any existing static highlights for this file
+		this.clearStaticHighlightsForFile(fileUri)
+
+		// For all document changes (typing or saving), immediately detect and highlight comments
+		this.detectAndHighlightComments(document)
+
+		// For save events, immediately process the comments with animation
+		if (isDocumentSave) {
+			// Check if this file was recently processed to avoid duplicate processing
+			if (this.isFileRecentlyProcessed(fileKey)) {
+				this.log(`Skipping duplicate processing for recently saved file: ${fileKey}`)
+				return
+			}
+
+			this.log(`Document saved, immediately processing: ${fileUri.toString()}`)
+
+			// Cancel any pending processing for this file
+			if (this.pendingProcessing.has(fileKey)) {
+				clearTimeout(this.pendingProcessing.get(fileKey))
+				this.pendingProcessing.delete(fileKey)
+			}
+
+			// Mark this file as recently processed
+			this.markFileAsProcessed(fileKey)
+
+			// Process the file immediately without debounce
+			this.processFile(fileUri)
+		}
+	}
+
+	/**
+	 * Handles file change events from file system watcher
 	 * @param data File change event data
 	 */
 	private handleFileChange(data: FileChangeData): void {
 		const { fileUri } = data
+		const fileKey = fileUri.toString()
 
 		// Skip excluded files
 		if (this.isFileExcluded(fileUri)) {
@@ -205,23 +277,18 @@ export class WatchModeService {
 			return
 		}
 
-		// Debounce processing to avoid multiple rapid triggers
-		const fileKey = fileUri.toString()
-
-		if (this.pendingProcessing.has(fileKey)) {
-			clearTimeout(this.pendingProcessing.get(fileKey))
-			this.pendingProcessing.delete(fileKey)
+		// Check if this file was recently processed to avoid duplicate processing
+		if (this.isFileRecentlyProcessed(fileKey)) {
+			this.log(`Skipping duplicate processing for recently changed file: ${fileKey}`)
+			return
 		}
 
-		this.log(`Scheduling processing for ${fileKey} with ${this.config.debounceTime}ms debounce`)
+		// Mark this file as recently processed
+		this.markFileAsProcessed(fileKey)
 
-		const timeout = setTimeout(async () => {
-			this.log(`Debounce complete, processing file: ${fileKey}`)
-			await this.processFile(fileUri)
-			this.pendingProcessing.delete(fileKey)
-		}, this.config.debounceTime)
-
-		this.pendingProcessing.set(fileKey, timeout)
+		// Process the file immediately without debounce
+		this.log(`Processing file from file system event: ${fileUri.toString()}`)
+		this.processFile(fileUri)
 	}
 
 	/**
@@ -303,6 +370,145 @@ export class WatchModeService {
 		}
 	}
 
+	/**
+	 * Detects and highlights comments in a document without animation
+	 * @param document The document to check
+	 */
+	private detectAndHighlightComments(document: vscode.TextDocument): void {
+		try {
+			const fileUri = document.uri
+			const content = document.getText()
+
+			// Skip files larger than ~1MB
+			if (content.length > 1000000) {
+				this.log(`Skipping large file: ${fileUri.fsPath}`)
+				return
+			}
+
+			const result = detectAIComments({ fileUri, content, languageId: document.languageId })
+
+			if (result.errors) {
+				result.errors.forEach((error) => {
+					this.log(`Error detecting comments: ${error.message}`)
+				})
+			}
+
+			if (result.comments.length === 0) {
+				this.log(`No AI comments found in file: ${fileUri.fsPath}`)
+				return // No comments found, nothing to do
+			}
+
+			this.log(`Found ${result.comments.length} AI comments in ${fileUri.fsPath}`)
+
+			for (const comment of result.comments) {
+				this.highlightCommentKiloOnly(document, comment)
+			}
+		} catch (error) {
+			this.log(
+				`Error detecting comments in ${document.uri.fsPath}: ${error instanceof Error ? error.message : String(error)}`,
+			)
+		}
+	}
+
+	/**
+	 * Highlights only the KILO keyword in a comment
+	 * @param document The document containing the comment
+	 * @param comment The AI comment data
+	 */
+	private highlightCommentKiloOnly(document: vscode.TextDocument, comment: AICommentData): void {
+		// Create a unique ID for this highlight
+		const highlightId = `static:${document.uri.toString()}:${comment.startPos.line}:${comment.startPos.character}`
+
+		// Clear any existing highlight for this comment
+		if (this.staticHighlights.has(highlightId)) {
+			this.staticHighlights.get(highlightId)?.()
+			this.staticHighlights.delete(highlightId)
+		}
+
+		// Find the position of the KILO prefix in the comment
+		const line = document.lineAt(comment.startPos.line).text
+		const commentPrefix = this.config.commentPrefix
+		const prefixIndex = line.indexOf(commentPrefix)
+
+		if (prefixIndex >= 0) {
+			// Create a range just for the KILO prefix
+			const prefixStart = new vscode.Position(comment.startPos.line, prefixIndex)
+			const prefixEnd = new vscode.Position(comment.startPos.line, prefixIndex + commentPrefix.length)
+			const prefixRange = new vscode.Range(prefixStart, prefixEnd)
+
+			// Apply static highlight with a lighter color only to the KILO prefix
+			const clearHighlight = this.highlighter.highlightRange(document, prefixRange, {
+				backgroundColor: "rgba(0, 122, 255, 0.3)",
+				borderColor: "rgba(0, 122, 255, 0.5)",
+				borderWidth: "1px",
+				borderStyle: "solid",
+				isWholeLine: false,
+			})
+
+			// Store the cleanup function
+			this.staticHighlights.set(highlightId, clearHighlight)
+		} else {
+			// Fallback to highlighting the whole comment if prefix not found
+			const range = new vscode.Range(comment.startPos, comment.endPos)
+
+			// Apply static highlight with a lighter color
+			const fallbackClearHighlight = this.highlighter.highlightRange(document, range, {
+				backgroundColor: "rgba(0, 122, 255, 0.3)",
+				borderColor: "rgba(0, 122, 255, 0.5)",
+				borderWidth: "1px",
+				borderStyle: "solid",
+				isWholeLine: false,
+			})
+
+			// Store the cleanup function
+			this.staticHighlights.set(highlightId, fallbackClearHighlight)
+		}
+	}
+
+	/**
+	 * Clears all static highlights for a specific file
+	 * @param fileUri The URI of the file
+	 */
+	private clearStaticHighlightsForFile(fileUri: vscode.Uri): void {
+		const fileUriStr = fileUri.toString()
+
+		// Find and clear all static highlights for this file
+		for (const [id, clearFn] of this.staticHighlights.entries()) {
+			if (id.includes(fileUriStr)) {
+				clearFn()
+				this.staticHighlights.delete(id)
+			}
+		}
+	}
+
+	/**
+	 * Checks if a file was recently processed to avoid duplicate processing
+	 * @param fileKey The file key (URI as string)
+	 * @returns True if the file was recently processed
+	 */
+	private isFileRecentlyProcessed(fileKey: string): boolean {
+		const lastProcessed = this.recentlyProcessedFiles.get(fileKey)
+		if (!lastProcessed) {
+			return false
+		}
+
+		const now = Date.now()
+		return now - lastProcessed < this.processingDebounceTime
+	}
+
+	/**
+	 * Marks a file as recently processed
+	 * @param fileKey The file key (URI as string)
+	 */
+	private markFileAsProcessed(fileKey: string): void {
+		this.recentlyProcessedFiles.set(fileKey, Date.now())
+
+		// Clean up old entries after a delay
+		setTimeout(() => {
+			this.recentlyProcessedFiles.delete(fileKey)
+		}, this.processingDebounceTime * 2)
+	}
+
 	private async processAIComment(document: vscode.TextDocument, comment: AICommentData): Promise<void> {
 		try {
 			this.log(
@@ -310,7 +516,17 @@ export class WatchModeService {
 			)
 
 			// Highlight the AI comment with animation
-			const clearHighlight = this.highlighter.highlightAICommentWithAnimation(document, comment)
+			const clearHighlight = this.highlighter.highlightRange(
+				document,
+				new vscode.Range(comment.startPos, comment.endPos),
+				{
+					backgroundColor: "rgba(0, 122, 255, 0.4)",
+					borderColor: "rgba(0, 122, 255, 0.9)",
+					borderWidth: "1px",
+					borderStyle: "solid",
+					isWholeLine: true,
+				},
+			)
 
 			// Emit event that we're starting to process this comment
 			this._onDidStartProcessingComment.fire({ fileUri: document.uri, comment })
@@ -461,6 +677,23 @@ export class WatchModeService {
 	}
 
 	/**
+	 * Disposes all document listeners
+	 */
+	private disposeDocumentListeners(): void {
+		this.log(`Disposing ${this.documentListeners.length} document listeners`)
+		for (const listener of this.documentListeners) {
+			listener.dispose()
+		}
+		this.documentListeners = []
+
+		// Clear all static highlights
+		for (const clearFn of this.staticHighlights.values()) {
+			clearFn()
+		}
+		this.staticHighlights.clear()
+	}
+
+	/**
 	 * Starts the watch mode service
 	 * @returns True if the service was started, false otherwise
 	 */
@@ -501,6 +734,9 @@ export class WatchModeService {
 			clearTimeout(timeout)
 		}
 		this.pendingProcessing.clear()
+
+		// Dispose document listeners
+		this.disposeDocumentListeners()
 
 		this.isActive = false
 		this._onDidChangeActiveState.fire(false)
