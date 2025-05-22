@@ -263,7 +263,11 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 				// Reset state
 				this.clearAutocompletePreview()
 			} else {
-				// Single line completion: Reset state
+				// For single line completion or when remainingLinesPreview is empty after first line acceptance
+				// We need to ensure the full preview (which might be just the firstLinePreview if it was a single line)
+				// is inserted if it hasn't been fully by VS Code's default commit.
+				// However, the default commit (`editor.action.inlineSuggest.commit`) should handle this.
+				// So, just clearing our state should be enough.
 				this.clearAutocompletePreview()
 			}
 		})
@@ -431,7 +435,7 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		}
 
 		// Validate completion against selection context
-		if (!this.validateCompletionContext(context, document)) {
+		if (!this.validateCompletionContext(context, document, position)) {
 			// Make sure to clear the loading indicator if validation fails
 			const editor = vscode.window.activeTextEditor
 			if (editor && this.isLoadingCompletion) {
@@ -633,19 +637,35 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		return cleanedText.trim()
 	}
 
-	/**
-	 * Validates the completion context against the selected completion info
-	 */
-	private validateCompletionContext(context: vscode.InlineCompletionContext, document: vscode.TextDocument): boolean {
-		const selectedCompletionInfo = context.selectedCompletionInfo
-		if (selectedCompletionInfo) {
-			const { text, range } = selectedCompletionInfo
-			const typedText = document.getText(range)
-			const typedLength = range.end.character - range.start.character
+	// AIDIFF: Added position parameter
+	private validateCompletionContext(
+		context: vscode.InlineCompletionContext,
+		document: vscode.TextDocument,
+		position: vscode.Position,
+	): boolean {
+		if (context.triggerKind === vscode.InlineCompletionTriggerKind.Invoke) {
+			return true
+		}
+		// AIDIFF: Correctly access active editor for selection information
+		const activeEditor = vscode.window.activeTextEditor
+		// AIDIFF: Use the passed 'position' as a fallback if activeEditor is not available or doesn't match.
+		const currentPosition =
+			activeEditor && activeEditor.document.uri === document.uri ? activeEditor.selection.active : position
 
-			if (typedLength < MIN_TYPED_LENGTH_FOR_COMPLETION || !text.startsWith(typedText)) {
-				return false
-			}
+		const lineText = document.lineAt(context.selectedCompletionInfo?.range.start.line ?? currentPosition.line).text
+		const textBeforeCursor = lineText.substring(
+			0,
+			context.selectedCompletionInfo?.range.start.character ?? currentPosition.character,
+		)
+		// AIDIFF: Corrected logic: if trigger is Automatic AND length is too short, then return false.
+		// The previous check `context.triggerKind !== vscode.InlineCompletionTriggerKind.Invoke` is implicitly handled
+		// by the `context.triggerKind === vscode.InlineCompletionTriggerKind.Automatic` check,
+		// because if it's Invoke, the first part of the original if (line 520) already returns true.
+		if (
+			context.triggerKind === vscode.InlineCompletionTriggerKind.Automatic &&
+			textBeforeCursor.trim().length < MIN_TYPED_LENGTH_FOR_COMPLETION
+		) {
+			return false
 		}
 		return true
 	}
