@@ -278,24 +278,6 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 	}
 
 	/**
-	 * Shows the loading indicator at the current cursor position
-	 */
-	private showLoadingIndicator(editor: vscode.TextEditor): void {
-		// Clear any existing preview first
-		this.clearAutocompletePreview()
-
-		// Set the loading state
-		this.isLoadingCompletion = true
-
-		// Show the loading decoration
-		const position = editor.selection.active
-		const decoration: vscode.DecorationOptions = {
-			range: new vscode.Range(position, position),
-		}
-		editor.setDecorations(this.loadingDecorationType, [decoration])
-	}
-
-	/**
 	 * Shows the streaming indicator at the current cursor position
 	 */
 	private showStreamingIndicator(editor: vscode.TextEditor): void {
@@ -305,70 +287,6 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 			range: new vscode.Range(position, position),
 		}
 		editor.setDecorations(this.streamingDecorationType, [decoration])
-	}
-
-	/**
-	 * Gets the completion text for the given document and position
-	 */
-	private async getCompletionText(
-		document: vscode.TextDocument,
-		position: vscode.Position,
-		context: vscode.InlineCompletionContext,
-		token: vscode.CancellationToken,
-	): Promise<string | null> {
-		try {
-			const cursorIndex = document.offsetAt(position)
-
-			// Get the current line text up to the cursor position
-			const lineText = document.lineAt(position.line).text
-			const textBeforeCursor = lineText.substring(0, position.character).trimStart()
-
-			// Generate a new completion
-			const result = await this.generateCompletionText(document, position, context, token)
-			if (!result) return null
-
-			// Remove any matching prefix from the result
-			const finalCompletionText = this.removeMatchingPrefix(textBeforeCursor, result)
-
-			// Split the completion into first line and remaining lines
-			const lines = finalCompletionText.split("\n")
-			if (lines.length > 1) {
-				this.firstLinePreview = lines[0]
-				this.remainingLinesPreview = lines.slice(1).join("\n")
-			} else {
-				this.firstLinePreview = finalCompletionText
-				this.remainingLinesPreview = ""
-			}
-
-			// Reset the acceptance state
-			this.hasAcceptedFirstLine = false
-
-			// Cache the result
-			this.cache.set(document.uri.toString(), document.getText(), cursorIndex, finalCompletionText)
-
-			return this.firstLinePreview
-		} catch (error) {
-			console.error("Error getting completion text:", error)
-
-			// Make sure to clear the loading indicator on error
-			const editor = vscode.window.activeTextEditor
-			if (editor && this.isLoadingCompletion) {
-				editor.setDecorations(this.loadingDecorationType, [])
-				this.isLoadingCompletion = false
-			}
-
-			return null
-		}
-	}
-
-	/**
-	 * Efficiently removes matching prefix from completion result
-	 */
-	private removeMatchingPrefix(textBeforeCursor: string, result: string): string {
-		if (!textBeforeCursor || !result.startsWith(textBeforeCursor)) {
-			return result
-		}
-		return result.slice(textBeforeCursor.length)
 	}
 
 	/**
