@@ -91,6 +91,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			pinnedApiConfigs,
 			togglePinnedApiConfig,
 			apiConfiguration, // kilocode_change
+			workflowToggles, // kilocode_change
 		} = useExtensionState()
 
 		const currentTheme = useVSCodeTheme() // kilocode_change
@@ -417,7 +418,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 						event.preventDefault()
 						setSelectedSlashCommandsIndex((prevIndex) => {
 							const direction = event.key === "ArrowUp" ? -1 : 1
-							const commands = getMatchingSlashCommands(slashCommandsQuery, customModes)
+							const commands = getMatchingSlashCommands(slashCommandsQuery, customModes, workflowToggles) // kilocode_change
 
 							if (commands.length === 0) {
 								return prevIndex
@@ -431,7 +432,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 
 					if ((event.key === "Enter" || event.key === "Tab") && selectedSlashCommandsIndex !== -1) {
 						event.preventDefault()
-						const commands = getMatchingSlashCommands(slashCommandsQuery, customModes)
+						const commands = getMatchingSlashCommands(slashCommandsQuery, customModes, workflowToggles) // kilocode_change
 						if (commands.length > 0) {
 							handleSlashCommandsSelect(commands[selectedSlashCommandsIndex])
 						}
@@ -579,6 +580,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 				cursorPosition,
 				justDeletedSpaceAfterMention,
 				setInputValue,
+				workflowToggles, // kilocode_change
 			],
 		)
 

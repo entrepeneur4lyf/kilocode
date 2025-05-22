@@ -708,6 +708,7 @@ export const globalSettingsSchema = z.object({
 	browserToolEnabled: z.boolean().optional(),
 	browserViewportSize: z.string().optional(),
 	showAutoApproveMenu: z.boolean().optional(), // kilocode_change
+	workflowToggles: z.record(z.string(), z.boolean()).optional(), // kilocode_change
 	screenshotQuality: z.number().optional(),
 	remoteBrowserEnabled: z.boolean().optional(),
 	remoteBrowserHost: z.string().optional(),
@@ -789,6 +790,7 @@ const globalSettingsRecord: GlobalSettingsRecord = {
 	browserToolEnabled: undefined,
 	browserViewportSize: undefined,
 	showAutoApproveMenu: undefined, // kilocode_change
+	workflowToggles: undefined, // kilocode_change
 	screenshotQuality: undefined,
 	remoteBrowserEnabled: undefined,
 	remoteBrowserHost: undefined,

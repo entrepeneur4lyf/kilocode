@@ -6,15 +6,20 @@ import { FileContextTracker } from "../context-tracking/FileContextTracker"
 import { GlobalFileNames } from "../../shared/globalFileNames"
 import { ensureLocalKilorulesDirExists } from "../context/instructions/kilo-rules"
 import { parseKiloSlashCommands } from "../slash-commands/kilo"
+import { refreshWorkflowToggles } from "../context/instructions/workflows" // kilocode_change
+
+import * as vscode from "vscode" // kilocode_change
 
 // This function is a duplicate of processUserContentMentions, but it adds a check for the newrules command
 // and processes Kilo-specific slash commands. It should be merged with processUserContentMentions in the future.
 export async function processKiloUserContentMentions({
+	context, // kilocode_change
 	userContent,
 	cwd,
 	urlContentFetcher,
 	fileContextTracker,
 }: {
+	context: vscode.ExtensionContext // kilocode_change
 	userContent: Anthropic.Messages.ContentBlockParam[]
 	cwd: string
 	urlContentFetcher: UrlContentFetcher
@@ -22,6 +27,7 @@ export async function processKiloUserContentMentions({
 }): Promise<[Anthropic.Messages.ContentBlockParam[], boolean]> {
 	// Track if we need to check kilorules file
 	let needsRulesFileCheck = false
+
 	/**
 	 * Process mentions in user content, specifically within task and feedback tags
 	 */
@@ -37,6 +43,8 @@ export async function processKiloUserContentMentions({
 		// these tags so they can effectively be used as markers for when we
 		// should parse mentions).
 
+		const workflowToggles = await refreshWorkflowToggles(context, cwd) // kilocode_change
+
 		return await Promise.all(
 			userContent.map(async (block) => {
 				const shouldProcessMentions = (text: string) => text.includes("<task>") || text.includes("<feedback>")
@@ -47,7 +55,10 @@ export async function processKiloUserContentMentions({
 						const parsedText = await parseMentions(block.text, cwd, urlContentFetcher, fileContextTracker)
 
 						// when parsing slash commands, we still want to allow the user to provide their desired context
-						const { processedText, needsRulesFileCheck: needsCheck } = parseKiloSlashCommands(parsedText)
+						const { processedText, needsRulesFileCheck: needsCheck } = await parseKiloSlashCommands(
+							parsedText,
+							workflowToggles, // kilocode_change
+						)
 
 						if (needsCheck) {
 							needsRulesFileCheck = true

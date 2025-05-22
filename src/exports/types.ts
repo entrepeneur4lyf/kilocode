@@ -75,6 +75,11 @@ type GlobalSettings = {
 	browserToolEnabled?: boolean | undefined
 	browserViewportSize?: string | undefined
 	showAutoApproveMenu?: boolean | undefined
+	workflowToggles?:
+		| {
+				[x: string]: boolean
+		  }
+		| undefined
 	screenshotQuality?: number | undefined
 	remoteBrowserEnabled?: boolean | undefined
 	remoteBrowserHost?: string | undefined
@@ -808,6 +813,11 @@ type IpcMessage =
 								browserToolEnabled?: boolean | undefined
 								browserViewportSize?: string | undefined
 								showAutoApproveMenu?: boolean | undefined
+								workflowToggles?:
+									| {
+											[x: string]: boolean
+									  }
+									| undefined
 								screenshotQuality?: number | undefined
 								remoteBrowserEnabled?: boolean | undefined
 								remoteBrowserHost?: string | undefined
@@ -1289,6 +1299,11 @@ type TaskCommand =
 					browserToolEnabled?: boolean | undefined
 					browserViewportSize?: string | undefined
 					showAutoApproveMenu?: boolean | undefined
+					workflowToggles?:
+						| {
+								[x: string]: boolean
+						  }
+						| undefined
 					screenshotQuality?: number | undefined
 					remoteBrowserEnabled?: boolean | undefined
 					remoteBrowserHost?: string | undefined

@@ -5,4 +5,5 @@ export const GlobalFileNames = {
 	customModes: "custom_modes.json",
 	taskMetadata: "task_metadata.json",
 	kiloRules: ".kilocode/rules", // kilocode_change
+	workflows: ".kilocode/workflows", // kilocode_change
 }

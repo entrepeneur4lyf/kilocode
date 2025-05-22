@@ -149,6 +149,7 @@ export interface WebviewMessage {
 		| "fetchBalanceDataRequest" // kilocode_change
 		| "balanceDataResponse" // kilocode_change
 		| "condense" // kilocode_change
+		| "toggleWorkflow" // kilocode_change
 	text?: string
 	disabled?: boolean
 	askResponse?: ClineAskResponse
@@ -168,6 +169,8 @@ export interface WebviewMessage {
 	toolNames?: string[]
 	url?: string
 	autoApprove?: boolean
+	workflowPath?: string // kilocode_change
+	enabled?: boolean // kilocode_change
 	// kilocode_change end
 	serverName?: string
 	toolName?: string

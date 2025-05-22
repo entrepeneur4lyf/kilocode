@@ -455,6 +455,7 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 		} = await this.getState()
 
 		const cline = new Task({
+			context: this.context, // kilocode_change
 			provider: this,
 			apiConfiguration,
 			enableDiff,
@@ -491,6 +492,7 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 		} = await this.getState()
 
 		const cline = new Task({
+			context: this.context, // kilocode_change
 			provider: this,
 			apiConfiguration,
 			enableDiff,
@@ -1257,6 +1259,13 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 		const allowedCommands = vscode.workspace.getConfiguration("kilo-code").get<string[]>("allowedCommands") || []
 		const cwd = this.cwd
 
+		// kilocode_change start
+		// Get workflow toggles from workspace state
+		const workflowToggles =
+			((await this.contextProxy.getWorkspaceState(this.context, "workflowToggles")) as Record<string, boolean>) ||
+			{}
+		// kilocode_change end
+
 		// Check if there's a system prompt override for the current mode
 		const currentMode = mode ?? defaultModeSlug
 		const hasSystemPromptOverride = await this.hasFileBasedSystemPromptOverride(currentMode)
@@ -1338,6 +1347,7 @@ export class ClineProvider extends EventEmitter<ClineProviderEvents> implements 
 			terminalCompressProgressBar: terminalCompressProgressBar ?? true,
 			hasSystemPromptOverride,
 			historyPreviewCollapsed: historyPreviewCollapsed ?? false,
+			workflowToggles, // kilocode_change
 		}
 	}
 
