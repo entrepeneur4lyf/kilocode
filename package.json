@@ -235,6 +235,12 @@
 				"category": "%configuration.title%"
 			},
 			{
+				"command": "kilo-code.profileButtonClicked",
+				"title": "%command.profile.title%",
+				"icon": "$(account)",
+				"category": "%configuration.title%"
+			},
+			{
 				"command": "kilo-code.acceptAutocompletePreview",
 				"title": "Accept Ghost Text Suggestion",
 				"category": "Kilo Code"
@@ -333,18 +339,23 @@
 					"when": "view == kilo-code.SidebarProvider"
 				},
 				{
-					"command": "kilo-code.settingsButtonClicked",
+					"command": "kilo-code.profileButtonClicked",
 					"group": "navigation@4",
 					"when": "view == kilo-code.SidebarProvider"
 				},
 				{
-					"command": "kilo-code.popoutButtonClicked",
+					"command": "kilo-code.settingsButtonClicked",
 					"group": "navigation@5",
 					"when": "view == kilo-code.SidebarProvider"
 				},
 				{
-					"command": "kilo-code.helpButtonClicked",
+					"command": "kilo-code.popoutButtonClicked",
 					"group": "navigation@6",
+					"when": "view == kilo-code.SidebarProvider"
+				},
+				{
+					"command": "kilo-code.helpButtonClicked",
+					"group": "navigation@7",
 					"when": "false && view == kilo-code.SidebarProvider"
 				}
 			],
