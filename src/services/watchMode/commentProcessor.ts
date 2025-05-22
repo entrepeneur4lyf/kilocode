@@ -1162,198 +1162,253 @@ export const applySearchReplaceEdits = async (
 	edits: NewDiffEdit[],
 ): Promise<boolean> => {
 	try {
-		const edit = new vscode.WorkspaceEdit()
-		const documentContent = document.getText()
-		let success = false
-		const documentUri = document.uri
-		const documentPath = vscode.workspace.asRelativePath(documentUri)
+		// Group edits by file path
+		const editsByFile = new Map<string, NewDiffEdit[]>()
 
-		for (const diffEdit of edits) {
-			// Skip edits for other files if the path doesn't match exactly
-			// We'll try fuzzy file matching later if needed
-			const isTargetFile = vscode.workspace.asRelativePath(document.uri) === diffEdit.filePath
-
-			if (!isTargetFile) {
-				continue
+		for (const edit of edits) {
+			const filePath = edit.filePath
+			if (!editsByFile.has(filePath)) {
+				editsByFile.set(filePath, [])
 			}
+			editsByFile.get(filePath)!.push(edit)
+		}
 
-			// Each edit should have exactly two blocks: SEARCH and REPLACE
-			if (diffEdit.blocks.length !== 2) {
-				continue
-			}
+		console.log(`[WatchMode DEBUG] Processing edits for ${editsByFile.size} files`)
 
-			const searchBlock = diffEdit.blocks.find((block) => block.type === "SEARCH")
-			const replaceBlock = diffEdit.blocks.find((block) => block.type === "REPLACE")
+		// Track overall success
+		let overallSuccess = true
 
-			if (!searchBlock || !replaceBlock) {
-				continue
-			}
+		// Apply edits for each file
+		for (const [filePath, fileEdits] of editsByFile.entries()) {
+			console.log(`[WatchMode DEBUG] Processing ${fileEdits.length} edits for file: ${filePath}`)
 
-			// Find the search text in the document using progressively more fuzzy matching
-			const searchText = searchBlock.content
+			// Get the document for this file
+			let fileDocument = document
+			let documentContent: string
+			let documentUri: vscode.Uri
 
-			// 1. Try exact match first
-			if (documentContent.includes(searchText)) {
-				console.log(`[WatchMode DEBUG] Found exact match in ${documentPath}`)
-
-				// Check if the search text appears multiple times
-				const regex = new RegExp(escapeRegExp(searchText), "g")
-				const matches = documentContent.match(regex)
-
-				if (matches && matches.length > 1) {
-					console.log(
-						`[WatchMode DEBUG] Warning: Search text appears ${matches.length} times in ${documentPath}`,
-					)
-					// Continue anyway, but use the first occurrence
-				}
-
-				const range = new vscode.Range(
-					document.positionAt(documentContent.indexOf(searchText)),
-					document.positionAt(documentContent.indexOf(searchText) + searchText.length),
-				)
-
-				edit.replace(document.uri, range, replaceBlock.content)
-				success = true
-				continue
-			}
-
-			// 2. Try with normalized whitespace
-			const normalizedSearch = searchText.replace(/\s+/g, " ").trim()
-			const normalizedContent = documentContent.replace(/\s+/g, " ").trim()
-
-			if (normalizedContent.includes(normalizedSearch)) {
-				console.log(`[WatchMode DEBUG] Found match with normalized whitespace in ${documentPath}`)
-
-				// Find the position in normalized content
-				const startPos = normalizedContent.indexOf(normalizedSearch)
-				const endPos = startPos + normalizedSearch.length
-
-				// Map back to original content positions
-				let originalStartPos = 0
-				let originalEndPos = 0
-				let normalizedPos = 0
-
-				for (let i = 0; i < documentContent.length; i++) {
-					const char = documentContent[i]
-					if (
-						!/\s/.test(char) ||
-						(i > 0 && /\S/.test(documentContent[i - 1]) && /\S/.test(documentContent[i + 1]))
-					) {
-						if (normalizedPos === startPos) {
-							originalStartPos = i
-						}
-						if (normalizedPos === endPos) {
-							originalEndPos = i
-							break
-						}
-						normalizedPos++
+			// If the file path doesn't match the current document, open the file
+			if (vscode.workspace.asRelativePath(document.uri) !== filePath) {
+				try {
+					// Find the document in the workspace
+					const workspaceFolders = vscode.workspace.workspaceFolders
+					if (!workspaceFolders) {
+						console.log(`[WatchMode DEBUG] No workspace folders found`)
+						overallSuccess = false
+						continue
 					}
-				}
 
-				// If we couldn't map back properly, use a more approximate approach
-				if (originalEndPos <= originalStartPos) {
-					// Find a unique substring from the search text
-					const uniqueSubstring = findUniqueSubstring(searchText, documentContent)
-					if (uniqueSubstring) {
-						const substringPos = documentContent.indexOf(uniqueSubstring)
-						if (substringPos >= 0) {
-							// Expand around the unique substring to find the best match
-							const [expandedStart, expandedEnd] = expandAroundMatch(
-								documentContent,
-								substringPos,
-								substringPos + uniqueSubstring.length,
-								searchText,
-							)
-							originalStartPos = expandedStart
-							originalEndPos = expandedEnd
-						}
-					}
-				}
+					const fileUri = vscode.Uri.joinPath(workspaceFolders[0].uri, filePath)
+					console.log(`[WatchMode DEBUG] Opening file: ${fileUri.toString()}`)
 
-				if (originalEndPos > originalStartPos) {
-					const range = new vscode.Range(
-						document.positionAt(originalStartPos),
-						document.positionAt(originalEndPos),
-					)
-
-					edit.replace(document.uri, range, replaceBlock.content)
-					success = true
+					fileDocument = await vscode.workspace.openTextDocument(fileUri)
+				} catch (error) {
+					console.log(`[WatchMode DEBUG] Error opening file ${filePath}: ${error}`)
+					overallSuccess = false
 					continue
 				}
 			}
 
-			// 3. Try case-insensitive match
-			const lowerSearch = searchText.toLowerCase()
-			const lowerContent = documentContent.toLowerCase()
+			documentContent = fileDocument.getText()
+			documentUri = fileDocument.uri
+			const documentPath = vscode.workspace.asRelativePath(documentUri)
 
-			if (lowerContent.includes(lowerSearch)) {
-				console.log(`[WatchMode DEBUG] Found case-insensitive match in ${documentPath}`)
+			// Create a workspace edit for this file
+			const edit = new vscode.WorkspaceEdit()
+			let fileSuccess = false
 
-				const startPos = lowerContent.indexOf(lowerSearch)
-				const endPos = startPos + lowerSearch.length
+			for (const diffEdit of fileEdits) {
+				// Each edit should have exactly two blocks: SEARCH and REPLACE
+				if (diffEdit.blocks.length !== 2) {
+					continue
+				}
 
-				const range = new vscode.Range(document.positionAt(startPos), document.positionAt(endPos))
+				const searchBlock = diffEdit.blocks.find((block) => block.type === "SEARCH")
+				const replaceBlock = diffEdit.blocks.find((block) => block.type === "REPLACE")
 
-				edit.replace(document.uri, range, replaceBlock.content)
-				success = true
-				continue
+				if (!searchBlock || !replaceBlock) {
+					continue
+				}
+
+				// Find the search text in the document using progressively more fuzzy matching
+				const searchText = searchBlock.content
+
+				// 1. Try exact match first
+				if (documentContent.includes(searchText)) {
+					console.log(`[WatchMode DEBUG] Found exact match in ${documentPath}`)
+
+					// Check if the search text appears multiple times
+					const regex = new RegExp(escapeRegExp(searchText), "g")
+					const matches = documentContent.match(regex)
+
+					if (matches && matches.length > 1) {
+						console.log(
+							`[WatchMode DEBUG] Warning: Search text appears ${matches.length} times in ${documentPath}`,
+						)
+						// Continue anyway, but use the first occurrence
+					}
+
+					const range = new vscode.Range(
+						fileDocument.positionAt(documentContent.indexOf(searchText)),
+						fileDocument.positionAt(documentContent.indexOf(searchText) + searchText.length),
+					)
+
+					edit.replace(documentUri, range, replaceBlock.content)
+					fileSuccess = true
+					continue
+				}
+
+				// 2. Try with normalized whitespace
+				const normalizedSearch = searchText.replace(/\s+/g, " ").trim()
+				const normalizedContent = documentContent.replace(/\s+/g, " ").trim()
+
+				if (normalizedContent.includes(normalizedSearch)) {
+					console.log(`[WatchMode DEBUG] Found match with normalized whitespace in ${documentPath}`)
+
+					// Find the position in normalized content
+					const startPos = normalizedContent.indexOf(normalizedSearch)
+					const endPos = startPos + normalizedSearch.length
+
+					// Map back to original content positions
+					let originalStartPos = 0
+					let originalEndPos = 0
+					let normalizedPos = 0
+
+					for (let i = 0; i < documentContent.length; i++) {
+						const char = documentContent[i]
+						if (
+							!/\s/.test(char) ||
+							(i > 0 && /\S/.test(documentContent[i - 1]) && /\S/.test(documentContent[i + 1]))
+						) {
+							if (normalizedPos === startPos) {
+								originalStartPos = i
+							}
+							if (normalizedPos === endPos) {
+								originalEndPos = i
+								break
+							}
+							normalizedPos++
+						}
+					}
+
+					// If we couldn't map back properly, use a more approximate approach
+					if (originalEndPos <= originalStartPos) {
+						// Find a unique substring from the search text
+						const uniqueSubstring = findUniqueSubstring(searchText, documentContent)
+						if (uniqueSubstring) {
+							const substringPos = documentContent.indexOf(uniqueSubstring)
+							if (substringPos >= 0) {
+								// Expand around the unique substring to find the best match
+								const [expandedStart, expandedEnd] = expandAroundMatch(
+									documentContent,
+									substringPos,
+									substringPos + uniqueSubstring.length,
+									searchText,
+								)
+								originalStartPos = expandedStart
+								originalEndPos = expandedEnd
+							}
+						}
+					}
+
+					if (originalEndPos > originalStartPos) {
+						const range = new vscode.Range(
+							fileDocument.positionAt(originalStartPos),
+							fileDocument.positionAt(originalEndPos),
+						)
+
+						edit.replace(documentUri, range, replaceBlock.content)
+						fileSuccess = true
+						continue
+					}
+				}
+
+				// 3. Try case-insensitive match
+				const lowerSearch = searchText.toLowerCase()
+				const lowerContent = documentContent.toLowerCase()
+
+				if (lowerContent.includes(lowerSearch)) {
+					console.log(`[WatchMode DEBUG] Found case-insensitive match in ${documentPath}`)
+
+					const startPos = lowerContent.indexOf(lowerSearch)
+					const endPos = startPos + lowerSearch.length
+
+					const range = new vscode.Range(fileDocument.positionAt(startPos), fileDocument.positionAt(endPos))
+
+					edit.replace(documentUri, range, replaceBlock.content)
+					fileSuccess = true
+					continue
+				}
+
+				// 4. Try with leading/trailing empty lines normalization
+				const trimmedSearch = searchText.trim()
+				const documentLines = documentContent.split("\n")
+
+				// Find non-empty lines in the document
+				let startLine = 0
+				while (startLine < documentLines.length && documentLines[startLine].trim() === "") {
+					startLine++
+				}
+
+				let endLine = documentLines.length - 1
+				while (endLine >= 0 && documentLines[endLine].trim() === "") {
+					endLine--
+				}
+
+				// Extract the content without leading/trailing empty lines
+				const trimmedDocumentLines = documentLines.slice(startLine, endLine + 1)
+				const trimmedDocument = trimmedDocumentLines.join("\n")
+
+				console.log(`[WatchMode DEBUG] Trying with trimmed leading/trailing empty lines in ${documentPath}`)
+
+				if (trimmedDocument.includes(trimmedSearch)) {
+					console.log(
+						`[WatchMode DEBUG] Found match after trimming leading/trailing empty lines in ${documentPath}`,
+					)
+
+					// Find the position in trimmed document
+					const startPos = trimmedDocument.indexOf(trimmedSearch)
+
+					// Map back to original content positions
+					const originalStartPos = documentContent.indexOf(trimmedDocument) + startPos
+					const originalEndPos = originalStartPos + trimmedSearch.length
+
+					const range = new vscode.Range(
+						fileDocument.positionAt(originalStartPos),
+						fileDocument.positionAt(originalEndPos),
+					)
+
+					edit.replace(documentUri, range, replaceBlock.content)
+					fileSuccess = true
+					continue
+				}
+
+				console.log(`[WatchMode DEBUG] Search text not found in document: ${searchText.substring(0, 50)}...`)
 			}
 
-			// 4. Try with leading/trailing empty lines normalization
-			const trimmedSearch = searchText.trim()
-			const documentLines = documentContent.split("\n")
+			if (fileSuccess) {
+				const success = await vscode.workspace.applyEdit(edit)
+				console.log(`[WatchMode DEBUG] Applied changes to ${documentPath}: ${success ? "SUCCESS" : "FAILED"}`)
 
-			// Find non-empty lines in the document
-			let startLine = 0
-			while (startLine < documentLines.length && documentLines[startLine].trim() === "") {
-				startLine++
+				if (success) {
+					// Save the file after modifying it
+					try {
+						await fileDocument.save()
+						console.log(`[WatchMode DEBUG] Saved file ${documentPath}`)
+					} catch (error) {
+						console.error(`[WatchMode DEBUG] Error saving file ${documentPath}:`, error)
+						overallSuccess = false
+					}
+				} else {
+					overallSuccess = false
+				}
+			} else {
+				console.log(`[WatchMode DEBUG] No matches found in ${documentPath}`)
+				overallSuccess = false
 			}
-
-			let endLine = documentLines.length - 1
-			while (endLine >= 0 && documentLines[endLine].trim() === "") {
-				endLine--
-			}
-
-			// Extract the content without leading/trailing empty lines
-			const trimmedDocumentLines = documentLines.slice(startLine, endLine + 1)
-			const trimmedDocument = trimmedDocumentLines.join("\n")
-
-			console.log(`[WatchMode DEBUG] Trying with trimmed leading/trailing empty lines in ${documentPath}`)
-
-			if (trimmedDocument.includes(trimmedSearch)) {
-				console.log(
-					`[WatchMode DEBUG] Found match after trimming leading/trailing empty lines in ${documentPath}`,
-				)
-
-				// Find the position in trimmed document
-				const startPos = trimmedDocument.indexOf(trimmedSearch)
-
-				// Map back to original content positions
-				const originalStartPos = documentContent.indexOf(trimmedDocument) + startPos
-				const originalEndPos = originalStartPos + trimmedSearch.length
-
-				const range = new vscode.Range(
-					document.positionAt(originalStartPos),
-					document.positionAt(originalEndPos),
-				)
-
-				edit.replace(document.uri, range, replaceBlock.content)
-				success = true
-				continue
-			}
-
-			console.log(`[WatchMode DEBUG] Search text not found in document: ${searchText.substring(0, 50)}...`)
 		}
 
-		if (success) {
-			return await vscode.workspace.applyEdit(edit)
-		}
-
-		// If we couldn't find matches in the current file, try searching other files in the workspace
-		// This would be implemented in a real system, but for now we'll just log it
-		console.log("[WatchMode DEBUG] No matches found in current file, would search other files in context")
-
-		return false
+		return overallSuccess
 	} catch (error) {
 		console.error("[WatchMode DEBUG] Error applying SEARCH/REPLACE edits:", error)
 		return false
