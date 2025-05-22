@@ -19,7 +19,7 @@ export function generateAutocompleteSnippets(
 ): AutocompleteSnippet[] {
 	const snippets: AutocompleteSnippet[] = []
 
-	if (options.includeImports && codeContext.imports.length > 0) {
+	if (options.includeImports) {
 		codeContext.imports.forEach((importStatement, index) => {
 			snippets.push({
 				type: AutocompleteSnippetType.Context,
@@ -29,7 +29,7 @@ export function generateAutocompleteSnippets(
 		})
 	}
 
-	if (options.includeDefinitions && codeContext.definitions.length > 0) {
+	if (options.includeDefinitions) {
 		codeContext.definitions.forEach((def: CodeContextDefinition) => {
 			snippets.push({
 				type: AutocompleteSnippetType.Code,
