@@ -4,7 +4,7 @@ import * as vscode from "vscode"
 import { AutocompleteConfig } from "./AutocompleteConfig"
 import { ApiHandler, buildApiHandler } from "../../api"
 import { ContextGatherer } from "./ContextGatherer"
-import { PromptRenderer, PromptOptions } from "./PromptRenderer" // Imported PromptOptions
+import { PromptRenderer } from "./PromptRenderer" // Imported PromptOptions
 import { CompletionCache } from "./utils/CompletionCache"
 import { generateImportSnippets, generateDefinitionSnippets } from "./context/snippetProvider" // Added import
 
@@ -458,13 +458,11 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 		]
 
 		// Define options for snippet generation and prompt rendering
-		const promptOptions: PromptOptions = {
+		const promptOptions = {
 			language: document.languageId,
 			includeImports: useImports,
 			includeDefinitions: useDefinitions,
 			multilineCompletions: multilineCompletions as any, // Keep as any if type is complex or from external lib
-			maxTokens: this.promptRenderer["defaultOptions"].maxTokens,
-			temperature: this.promptRenderer["defaultOptions"].temperature,
 		}
 
 		// Render prompts
