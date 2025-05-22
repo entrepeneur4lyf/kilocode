@@ -594,12 +594,11 @@ export class AutocompleteProvider implements vscode.InlineCompletionItemProvider
 							if (firstLineComplete) {
 								if (this.hasAcceptedFirstLine) {
 									// If first line was accepted, update remaining lines
-									this.remainingLinesPreview = currentRemainingLines
 								} else {
 									// Otherwise, still store just the first line
 									this.firstLinePreview = currentFirstLine
-									this.remainingLinesPreview = currentRemainingLines
 								}
+								this.remainingLinesPreview = currentRemainingLines
 							} else {
 								// If first line isn't complete yet, store everything
 								const cleanedText = this.cleanMarkdownCodeBlocks(completion)
