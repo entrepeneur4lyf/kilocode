@@ -5,7 +5,6 @@ import { AutocompleteConfig } from "./AutocompleteConfig"
 import { buildApiHandler } from "../../api"
 import { ContextGatherer } from "./ContextGatherer"
 import { PromptRenderer } from "./PromptRenderer" // Imported PromptOptions
-import { CompletionCache } from "./utils/CompletionCache"
 import { ContextProxy } from "../../core/config/ContextProxy"
 import { generateImportSnippets, generateDefinitionSnippets } from "./context/snippetProvider" // Added import
 
@@ -50,7 +49,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 	let inlineCompletionProviderDisposable: vscode.Disposable | null = null
 
 	// Core services - created once
-	new CompletionCache()
 	const config = new AutocompleteConfig()
 	const contextGatherer = new ContextGatherer()
 	const promptRenderer = new PromptRenderer({}, DEFAULT_MODEL)
