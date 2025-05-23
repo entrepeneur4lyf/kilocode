@@ -33,8 +33,10 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 	let debounceDelay = DEFAULT_DEBOUNCE_DELAY
 
 	// Preview state
-	let firstLinePreview = ""
-	let remainingLinesPreview = ""
+	const preview = {
+		firstLine: "",
+		remainingLines: "",
+	}
 	let hasAcceptedFirstLine = false
 	let isShowingAutocompletePreview = false
 	let isLoadingCompletion = false
@@ -75,8 +77,8 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 	const clearAutocompletePreview = () => {
 		isShowingAutocompletePreview = false
 		isLoadingCompletion = false
-		firstLinePreview = ""
-		remainingLinesPreview = ""
+		preview.firstLine = ""
+		preview.remainingLines = ""
 		hasAcceptedFirstLine = false
 
 		// Clear loading indicators
@@ -232,8 +234,8 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 					remainingLines = currentRemainingLines
 
 					// Store the first line and remaining lines
-					firstLinePreview = currentFirstLine
-					remainingLinesPreview = remainingLines
+					preview.firstLine = currentFirstLine
+					preview.remainingLines = remainingLines
 					isShowingAutocompletePreview = true
 
 					// Trigger inline suggestion
@@ -247,13 +249,16 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 							if (firstLineComplete) {
 								if (!hasAcceptedFirstLine) {
 									// Otherwise, still store just the first line
-									firstLinePreview = currentFirstLine
+									preview.firstLine = currentFirstLine
+									preview.remainingLines = currentRemainingLines
+								} else {
+									// Only update remaining lines if first line was accepted
+									preview.remainingLines = currentRemainingLines
 								}
-								remainingLinesPreview = currentRemainingLines
 							} else {
 								// If first line isn't complete yet, store everything
-								firstLinePreview = cleanMarkdownCodeBlocks(completion)
-								remainingLinesPreview = ""
+								preview.firstLine = cleanMarkdownCodeBlocks(completion)
+								preview.remainingLines = ""
 							}
 
 							// Trigger inline suggestion to update
@@ -279,8 +284,8 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 
 		// Final update to ensure we have the correct split
 		const { firstLine: finalFirstLine, remainingLines: finalRemainingLines } = splitCompletion(completion)
-		firstLinePreview = finalFirstLine
-		remainingLinesPreview = finalRemainingLines
+		preview.firstLine = finalFirstLine
+		preview.remainingLines = finalRemainingLines
 
 		// Set context for keybindings
 		vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, true)
@@ -403,8 +408,8 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		}
 
 		try {
-			if (hasAcceptedFirstLine && remainingLinesPreview) {
-				const item = new vscode.InlineCompletionItem(remainingLinesPreview)
+			if (hasAcceptedFirstLine && preview.remainingLines) {
+				const item = new vscode.InlineCompletionItem(preview.remainingLines)
 				item.command = { command: "editor.action.inlineSuggest.commit", title: "Accept Completion" }
 				isShowingAutocompletePreview = true
 				vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, true)
@@ -422,14 +427,14 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			let item: vscode.InlineCompletionItem
 
 			if (lines.length > 1) {
-				firstLinePreview = lines[0]
-				remainingLinesPreview = lines.slice(1).join("\n")
+				preview.firstLine = lines[0]
+				preview.remainingLines = lines.slice(1).join("\n")
 				// Only show the first line initially
 				item = new vscode.InlineCompletionItem(lines[0])
 			} else {
 				// Single line completion
-				firstLinePreview = completionText
-				remainingLinesPreview = ""
+				preview.firstLine = completionText
+				preview.remainingLines = ""
 				item = new vscode.InlineCompletionItem(completionText)
 			}
 
@@ -518,11 +523,11 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			if (!editor) return
 
 			// Handle the acceptance directly without calling commit again
-			if (!hasAcceptedFirstLine && remainingLinesPreview) {
+			if (!hasAcceptedFirstLine && preview.remainingLines) {
 				// First Tab press: Insert the first line
-				if (firstLinePreview) {
+				if (preview.firstLine) {
 					await editor.edit((editBuilder) => {
-						editBuilder.insert(editor.selection.active, firstLinePreview)
+						editBuilder.insert(editor.selection.active, preview.firstLine)
 					})
 
 					// Mark that we've accepted the first line
@@ -534,17 +539,17 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 						await vscode.commands.executeCommand("editor.action.inlineSuggest.trigger")
 					}, 50)
 				}
-			} else if (hasAcceptedFirstLine && remainingLinesPreview) {
+			} else if (hasAcceptedFirstLine && preview.remainingLines) {
 				// Second Tab press: Insert the remaining lines
 				await editor.edit((editBuilder) => {
-					editBuilder.insert(editor.selection.active, remainingLinesPreview)
+					editBuilder.insert(editor.selection.active, preview.remainingLines)
 				})
 
 				// Reset state
 				clearAutocompletePreview()
 			} else {
-				// For single line completion or when remainingLinesPreview is empty after first line acceptance
-				// We need to ensure the full preview (which might be just the firstLinePreview if it was a single line)
+				// For single line completion or when preview.remainingLines is empty after first line acceptance
+				// We need to ensure the full preview (which might be just the preview.firstLine if it was a single line)
 				// is inserted if it hasn't been fully by VS Code's default commit.
 				// However, the default commit (`editor.action.inlineSuggest.commit`) should handle this.
 				// So, just clearing our state should be enough.
