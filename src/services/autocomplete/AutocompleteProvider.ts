@@ -47,9 +47,10 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 	let hasAcceptedFirstLine = false
 	let isShowingAutocompletePreview = false
 	let isLoadingCompletion = false
+	let inlineCompletionProviderDisposable: vscode.Disposable | null = null
 
 	// Core services - created once
-	const cache = new CompletionCache()
+	new CompletionCache()
 	const config = new AutocompleteConfig()
 	const contextGatherer = new ContextGatherer()
 	const promptRenderer = new PromptRenderer({}, DEFAULT_MODEL)
@@ -164,11 +165,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		return true
 	}
 
-	// Dependencies
-	const deps = { apiHandler, cache, config, contextGatherer, promptRenderer }
-
-	let inlineCompletionProviderDisposable: vscode.Disposable | null = null
-
 	const processCompletionStream = async (
 		systemPrompt: string,
 		prompt: string,
@@ -182,7 +178,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 
 		// Create the stream using the API handler's createMessage method
 		// Note: Stop tokens are embedded in the prompt template format instead of passed directly
-		const stream = deps.apiHandler.createMessage(systemPrompt, [
+		const stream = apiHandler.createMessage(systemPrompt, [
 			{ role: "user", content: [{ type: "text", text: prompt }] },
 		])
 
@@ -249,11 +245,11 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		activeCompletionId = completionId
 		hasAcceptedFirstLine = false
 
-		const conf = await deps.config.loadConfig()
+		const conf = await config.loadConfig()
 		const useImports = conf?.useImports || false
 		const useDefinitions = conf?.onlyMyCode || false
 		const multilineCompletions = conf?.multilineCompletions || "auto"
-		const codeContext = await deps.contextGatherer.gatherContext(document, position, useImports, useDefinitions)
+		const codeContext = await contextGatherer.gatherContext(document, position, useImports, useDefinitions)
 
 		const snippets = [
 			...generateImportSnippets(useImports, codeContext.imports, document.uri.fsPath),
@@ -267,8 +263,8 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			multilineCompletions: multilineCompletions as any, // Keep as any if type is complex or from external lib
 		}
 
-		const prompt = deps.promptRenderer.renderPrompt(codeContext, snippets, promptOptions)
-		const systemPrompt = deps.promptRenderer.renderSystemPrompt()
+		const prompt = promptRenderer.renderPrompt(codeContext, snippets, promptOptions)
+		const systemPrompt = promptRenderer.renderSystemPrompt()
 
 		token.onCancellationRequested(() => {
 			if (activeCompletionId === completionId) {
