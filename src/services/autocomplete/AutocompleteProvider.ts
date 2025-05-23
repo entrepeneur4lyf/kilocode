@@ -15,6 +15,13 @@ const DEFAULT_MODEL = "mistralai/codestral-2501" // or google/gemini-2.5-flash-p
 const MIN_TYPED_LENGTH_FOR_COMPLETION = 4
 const AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY = "kilo-code.autocompletePreviewVisible"
 
+// Rich preview object to avoid primitive obsession
+interface CompletionPreview {
+	firstLine: string
+	remainingLines: string
+	rawCompletion: string
+}
+
 export function hookAutocomplete(context: vscode.ExtensionContext) {
 	try {
 		// Initialize the autocomplete preview text visibility context to false
@@ -32,9 +39,10 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 	let activeCompletionId: string | null = null
 	let debounceDelay = DEFAULT_DEBOUNCE_DELAY
 
-	const emptyPreview = {
+	const emptyPreview: CompletionPreview = {
 		firstLine: "",
 		remainingLines: "",
+		rawCompletion: "",
 	}
 	// Preview state
 	let preview = emptyPreview
@@ -103,14 +111,26 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		editor.setDecorations(streamingDecorationType, [decoration])
 	}
 
-	const cleanMarkdownCodeBlocks = (text: string): string =>
-		text
+	// Centralized function to clean markdown and split completion
+	const processCompletionText = (rawText: string): CompletionPreview => {
+		// Clean markdown code blocks once
+		const cleanedText = rawText
 			.replace(/```[\w-]*\n([\s\S]*?)\n```/g, "$1") // Handle complete code blocks
 			.replace(/^```[\w-]*\n/g, "") // Handle opening code block markers at the beginning of a chunk
 			.replace(/\n```[\w-]*\n/g, "\n") // Handle opening code block markers in the middle of a chunk
 			.replace(/\n```$/g, "") // Handle closing code block markers
 			.replace(/```[\w-]*$/g, "") // Handle any remaining backticks that might be part of incomplete code blocks
 			.trim() // Trim any leading/trailing whitespace that might be left over
+
+		// Split into first line and remaining lines
+		const lines = cleanedText.split("\n", 2)
+
+		return {
+			firstLine: lines[0] || "",
+			remainingLines: lines[1] || "",
+			rawCompletion: rawText,
+		}
+	}
 
 	const isFileDisabled = (document: vscode.TextDocument): boolean => {
 		const vscodeConfig = vscode.workspace.getConfiguration("kilo-code")
@@ -169,26 +189,13 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		prompt: string,
 		completionId: string,
 		document: vscode.TextDocument,
-	): Promise<{ completion: string; isCancelled: boolean }> => {
+	): Promise<{ preview: CompletionPreview; isCancelled: boolean }> => {
 		let completion = ""
 		let isCancelled = false
 		let firstLineComplete = false
 
 		// Local state for throttling
 		let throttleTimeout: NodeJS.Timeout | null = null
-
-		// Function to check if the request has been cancelled
-
-		// Function to split completion into first line and remaining lines
-		const splitCompletion = (text: string): { firstLine: string; remainingLines: string } => {
-			const cleanedText = cleanMarkdownCodeBlocks(text)
-			const lines = cleanedText.split("\n", 2)
-
-			return {
-				firstLine: lines[0],
-				remainingLines: lines[1] ?? "",
-			}
-		}
 
 		// Create the stream using the API handler's createMessage method
 		// Note: Stop tokens are embedded in the prompt template format instead of passed directly
@@ -215,7 +222,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 
 			if (chunk.type === "text") {
 				completion += chunk.text
-				preview = splitCompletion(completion)
+				preview = processCompletionText(completion)
 
 				// If we have a throttle timeout already, clear it
 				if (throttleTimeout) {
@@ -253,13 +260,13 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			clearTimeout(throttleTimeout)
 		}
 
-		// Final update to ensure we have the correct split
-		preview = splitCompletion(completion)
+		// Final update to ensure we have the correct preview
+		preview = processCompletionText(completion)
 
 		// Set context for keybindings
 		vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, true)
 
-		return { completion, isCancelled }
+		return { preview, isCancelled }
 	}
 
 	/**
@@ -270,7 +277,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		position: vscode.Position,
 		context: vscode.InlineCompletionContext,
 		token: vscode.CancellationToken,
-	): Promise<string | null> => {
+	): Promise<CompletionPreview | null> => {
 		// Show streaming indicator while generating completion
 		const editor = vscode.window.activeTextEditor
 		if (editor && editor.document === document) {
@@ -333,7 +340,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 
 				Prompt: """${prompt.prompt}"""
 
-				Completion: """${result.completion}"""
+				Completion: """${result.preview.rawCompletion}"""
 
 				Duration: ${duration} ms
 				`)
@@ -362,7 +369,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			return null
 		}
 
-		return cleanMarkdownCodeBlocks(result.completion)
+		return result.preview
 	}
 
 	const provideInlineCompletionItems = async (
@@ -386,15 +393,10 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			}
 
 			// Otherwise, generate a new completion
-			const completionText = await generateCompletionText(document, position, context, token)
-			if (!completionText) return null
+			const completionPreview = await generateCompletionText(document, position, context, token)
+			if (!completionPreview) return null
 
-			const lines = completionText.split("\n", 2)
-
-			preview = {
-				firstLine: lines[0],
-				remainingLines: lines[1] ?? "",
-			}
+			preview = completionPreview
 
 			isShowingAutocompletePreview = true
 			vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, true)
