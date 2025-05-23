@@ -182,15 +182,11 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		// Function to split completion into first line and remaining lines
 		const splitCompletion = (text: string): { firstLine: string; remainingLines: string } => {
 			const cleanedText = cleanMarkdownCodeBlocks(text)
-			const lines = cleanedText.split("\n")
+			const lines = cleanedText.split("\n", 2)
 
-			if (lines.length <= 1) {
-				return { firstLine: cleanedText, remainingLines: "" }
-			} else {
-				return {
-					firstLine: lines[0],
-					remainingLines: lines.slice(1).join("\n"),
-				}
+			return {
+				firstLine: lines[0],
+				remainingLines: lines[1] ?? "",
 			}
 		}
 
