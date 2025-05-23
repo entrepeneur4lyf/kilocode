@@ -43,8 +43,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 	let enabled = true
 	let activeCompletionId: string | null = null
 	let debounceDelay = DEFAULT_DEBOUNCE_DELAY
-
-	// Preview state
 	let preview = emptyPreview
 	let hasAcceptedFirstLine = false
 	let isShowingAutocompletePreview = false
@@ -55,7 +53,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 	const config = new AutocompleteConfig()
 	const contextGatherer = new ContextGatherer()
 	const promptRenderer = new PromptRenderer({}, DEFAULT_MODEL)
-
 	const kilocodeToken = ContextProxy.instance.getProviderSettings().kilocodeToken
 	const apiHandler = buildApiHandler({
 		apiProvider: "kilocode",
@@ -94,10 +91,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			editor.setDecorations(streamingDecorationType, [])
 		}
 
-		// Update the context for keybindings
 		vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, false)
-
-		// Hide any active inline suggestions
 		vscode.commands.executeCommand("editor.action.inlineSuggest.hide")
 	}
 
@@ -170,13 +164,9 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		return true
 	}
 
-	// State variables are now accessed directly within the hookAutocompleteInner closure.
-	// The 'state' object has been removed.
-
 	// Dependencies
 	const deps = { apiHandler, cache, config, contextGatherer, promptRenderer }
 
-	// Inline completion provider disposable
 	let inlineCompletionProviderDisposable: vscode.Disposable | null = null
 
 	const processCompletionStream = async (
