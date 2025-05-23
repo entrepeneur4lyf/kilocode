@@ -75,14 +75,10 @@ export const getModels = async (
 			}
 			break
 		case "kilocode-openrouter":
-			const options = {
-				openRouterBaseUrl: baseUrl,
-				headers: {
-					Authorization: `Bearer ${apiKey}`,
-				},
-			}
-
-			models = await getOpenRouterModels(options)
+			models = await getOpenRouterModels({
+				baseUrl,
+				headers: { Authorization: `Bearer ${apiKey}` },
+			})
 			break
 	}
 
