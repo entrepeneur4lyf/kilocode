@@ -32,11 +32,12 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 	let activeCompletionId: string | null = null
 	let debounceDelay = DEFAULT_DEBOUNCE_DELAY
 
-	// Preview state
-	let preview = {
+	const emptyPreview = {
 		firstLine: "",
 		remainingLines: "",
 	}
+	// Preview state
+	let preview = emptyPreview
 	let hasAcceptedFirstLine = false
 	let isShowingAutocompletePreview = false
 	let isLoadingCompletion = false
@@ -77,8 +78,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 	const clearAutocompletePreview = () => {
 		isShowingAutocompletePreview = false
 		isLoadingCompletion = false
-		preview.firstLine = ""
-		preview.remainingLines = ""
+		preview = emptyPreview
 		hasAcceptedFirstLine = false
 
 		// Clear loading indicators
@@ -173,7 +173,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		let completion = ""
 		let isCancelled = false
 		let firstLineComplete = false
-		let remainingLines = ""
 
 		// Local state for throttling
 		let throttleTimeout: NodeJS.Timeout | null = null
@@ -220,8 +219,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 
 			if (chunk.type === "text") {
 				completion += chunk.text
-				const { firstLine: currentFirstLine, remainingLines: currentRemainingLines } =
-					splitCompletion(completion)
+				preview = splitCompletion(completion)
 
 				// If we have a throttle timeout already, clear it
 				if (throttleTimeout) {
@@ -231,11 +229,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 				// Check if first line is complete (has a newline)
 				if (!firstLineComplete && completion.includes("\n")) {
 					firstLineComplete = true
-					remainingLines = currentRemainingLines
-
-					// Store the first line and remaining lines
-					preview.firstLine = currentFirstLine
-					preview.remainingLines = remainingLines
 					isShowingAutocompletePreview = true
 
 					// Trigger inline suggestion
@@ -244,24 +237,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 					// Set a new throttle timeout
 					throttleTimeout = setTimeout(() => {
 						if (editor && editor.document === document) {
-							// If first line is complete, update state based on current completion
-
-							if (firstLineComplete) {
-								if (!hasAcceptedFirstLine) {
-									// Otherwise, still store just the first line
-									preview.firstLine = currentFirstLine
-									preview.remainingLines = currentRemainingLines
-								} else {
-									// Only update remaining lines if first line was accepted
-									preview.remainingLines = currentRemainingLines
-								}
-							} else {
-								// If first line isn't complete yet, store everything
-								preview.firstLine = cleanMarkdownCodeBlocks(completion)
-								preview.remainingLines = ""
-							}
-
-							// Trigger inline suggestion to update
 							if (isShowingAutocompletePreview) {
 								vscode.commands.executeCommand("editor.action.inlineSuggest.trigger")
 							}
@@ -418,28 +393,17 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			const completionText = await generateCompletionText(document, position, context, token)
 			if (!completionText) return null
 
-			// Split the completion into first line and remaining lines
-			const lines = completionText.split("\n")
+			const lines = completionText.split("\n", 2)
 
-			// Create the completion item
-			let item: vscode.InlineCompletionItem
-
-			if (lines.length > 1) {
-				preview.firstLine = lines[0]
-				preview.remainingLines = lines.slice(1).join("\n")
-				// Only show the first line initially
-				item = new vscode.InlineCompletionItem(lines[0])
-			} else {
-				// Single line completion
-				preview.firstLine = completionText
-				preview.remainingLines = ""
-				item = new vscode.InlineCompletionItem(completionText)
+			preview = {
+				firstLine: lines[0],
+				remainingLines: lines[1] ?? "",
 			}
 
 			isShowingAutocompletePreview = true
 			vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, true)
 
-			return [item]
+			return [new vscode.InlineCompletionItem(preview.firstLine)]
 		} catch (error) {
 			console.error("Error providing inline completion:", error)
 			return null
