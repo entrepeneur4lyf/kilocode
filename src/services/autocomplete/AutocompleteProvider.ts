@@ -224,10 +224,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 				completion += chunk.text
 				preview = processCompletionText(completion)
 
-				// If we have a throttle timeout already, clear it
-				if (throttleTimeout) {
-					clearTimeout(throttleTimeout)
-				}
+				if (throttleTimeout) clearTimeout(throttleTimeout)
 
 				// Check if first line is complete (has a newline)
 				if (!firstLineComplete && completion.includes("\n")) {
@@ -255,10 +252,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			editor.setDecorations(streamingDecorationType, [])
 		}
 
-		// Clean up any pending throttle timeout
-		if (throttleTimeout) {
-			clearTimeout(throttleTimeout)
-		}
+		if (throttleTimeout) clearTimeout(throttleTimeout)
 
 		// Set context for keybindings
 		vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, true)
