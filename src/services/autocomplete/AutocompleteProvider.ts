@@ -21,6 +21,11 @@ interface CompletionPreview {
 	remainingLines: string
 	rawCompletion: string
 }
+const emptyPreview: CompletionPreview = {
+	firstLine: "",
+	remainingLines: "",
+	rawCompletion: "",
+}
 
 export function hookAutocomplete(context: vscode.ExtensionContext) {
 	try {
@@ -39,11 +44,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 	let activeCompletionId: string | null = null
 	let debounceDelay = DEFAULT_DEBOUNCE_DELAY
 
-	const emptyPreview: CompletionPreview = {
-		firstLine: "",
-		remainingLines: "",
-		rawCompletion: "",
-	}
 	// Preview state
 	let preview = emptyPreview
 	let hasAcceptedFirstLine = false
@@ -63,7 +63,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		kilocodeModel: DEFAULT_MODEL,
 	})
 
-	// Decoration types
 	const loadingDecorationType = vscode.window.createTextEditorDecorationType({
 		after: {
 			color: new vscode.ThemeColor("editorGhostText.foreground"),
@@ -82,7 +81,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen,
 	})
 
-	// Helper functions
 	const clearAutocompletePreview = () => {
 		isShowingAutocompletePreview = false
 		isLoadingCompletion = false
