@@ -33,7 +33,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 	let debounceDelay = DEFAULT_DEBOUNCE_DELAY
 
 	// Preview state
-	const preview = {
+	let preview = {
 		firstLine: "",
 		remainingLines: "",
 	}
@@ -283,9 +283,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		}
 
 		// Final update to ensure we have the correct split
-		const { firstLine: finalFirstLine, remainingLines: finalRemainingLines } = splitCompletion(completion)
-		preview.firstLine = finalFirstLine
-		preview.remainingLines = finalRemainingLines
+		preview = splitCompletion(completion)
 
 		// Set context for keybindings
 		vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, true)
