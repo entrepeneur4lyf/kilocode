@@ -279,14 +279,10 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			multilineCompletions: multilineCompletions as any, // Keep as any if type is complex or from external lib
 		}
 
-		// Render prompts
 		const prompt = deps.promptRenderer.renderPrompt(codeContext, snippets, promptOptions)
 		const systemPrompt = deps.promptRenderer.renderSystemPrompt()
 
-		// Setup cancellation
-		const abortController = new AbortController()
 		token.onCancellationRequested(() => {
-			abortController.abort()
 			if (activeCompletionId === completionId) {
 				activeCompletionId = null
 			}
