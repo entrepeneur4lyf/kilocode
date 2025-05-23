@@ -75,11 +75,10 @@ export const getModels = async (
 			}
 			break
 		case "kilocode-openrouter":
-			const kilocodeToken = ContextProxy.instance.getProviderSettings().kilocodeToken
-			const options: any = {
-				openRouterBaseUrl: "https://kilocode.ai/api/openrouter",
+			const options = {
+				openRouterBaseUrl: baseUrl,
 				headers: {
-					Authorization: `Bearer ${kilocodeToken}`,
+					Authorization: `Bearer ${apiKey}`,
 				},
 			}
 
