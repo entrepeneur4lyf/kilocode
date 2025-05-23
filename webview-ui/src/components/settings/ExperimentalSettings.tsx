@@ -22,6 +22,7 @@ export const ExperimentalSettings = ({
 	experiments,
 	setExperimentEnabled,
 	className,
+	providerSettings, // kilocode_change
 	...props
 }: ExperimentalSettingsProps) => {
 	const { t } = useAppTranslation()
@@ -46,7 +47,7 @@ export const ExperimentalSettings = ({
 							onChange={(enabled) =>
 								setExperimentEnabled(EXPERIMENT_IDS[config[0] as keyof typeof EXPERIMENT_IDS], enabled)
 							}
-							isAvailable={config[1].isAvailable(props.providerSettings)} // kilocode_change
+							isAvailable={config[1].isAvailable(providerSettings)} // kilocode_change
 						/>
 					))}
 			</Section>

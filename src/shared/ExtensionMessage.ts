@@ -185,8 +185,8 @@ export type ExtensionState = Pick<
 	| "customModePrompts"
 	| "customSupportPrompts"
 	| "enhancementApiConfigId"
-	| "workflowToggles" // kilocode_change
-	| "autocompleteApiConfigId"
+	| "autocompleteApiConfigId" // kilocode_change
+	| "workflowToggles"
 > & {
 	version: string
 	clineMessages: ClineMessage[]
