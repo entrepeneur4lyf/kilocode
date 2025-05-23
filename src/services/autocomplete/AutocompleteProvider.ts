@@ -114,11 +114,11 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			.trim() // Trim any leading/trailing whitespace that might be left over
 
 		// Split into first line and remaining lines
-		const lines = cleanedText.split("\n", 2)
+		const firstLine = cleanedText.split("\n", 1)[0]
 
 		return {
-			firstLine: lines[0] || "",
-			remainingLines: lines[1] || "",
+			firstLine,
+			remainingLines: cleanedText.substring(firstLine.length + 1),
 			rawCompletion: rawText,
 		}
 	}
@@ -272,18 +272,23 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		const result = await processCompletionStream(systemPrompt, prompt.prompt, completionId, document)
 		const duration = performance.now() - startTime
 		if (!result) {
-			console.info(`Completion ${completionId} CANCELLED`)
+			console.info(`Completion ${completionId} CANCELLED in ${duration} ms`)
 		} else {
 			console.info(`
-				Completion ${completionId} generated.
+Completion ${completionId} generated in ${duration} ms.
 
-				System prompt: """${systemPrompt}"""
+🙈 Prompt:
+${prompt.prompt}
 
-				Prompt: """${prompt.prompt}"""
 
-				Completion: """${result.rawCompletion}"""
+🤖 Completion:
+${result.rawCompletion}
 
-				Duration: ${duration} ms
+🤖 first line:
+${result.firstLine}
+
+🤖 remaining:
+${result.remainingLines}
 				`)
 		}
 
