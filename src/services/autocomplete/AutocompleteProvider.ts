@@ -312,16 +312,11 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 				`)
 		}
 
-		if (result.isCancelled || token.isCancellationRequested) {
-			const editor = vscode.window.activeTextEditor
-			if (editor && isLoadingCompletion) {
-				editor.setDecorations(loadingDecorationType, [])
-				isLoadingCompletion = false
-			}
-			return null
-		}
-
-		if (!validateCompletionContext(context, document, position)) {
+		if (
+			result.isCancelled ||
+			token.isCancellationRequested ||
+			!validateCompletionContext(context, document, position)
+		) {
 			const editor = vscode.window.activeTextEditor
 			if (editor && isLoadingCompletion) {
 				editor.setDecorations(loadingDecorationType, [])
