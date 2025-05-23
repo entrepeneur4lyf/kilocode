@@ -168,7 +168,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		prompt: string,
 		completionId: string,
 		document: vscode.TextDocument,
-	): Promise<{ preview: CompletionPreview; isCancelled: boolean }> => {
+	): Promise<CompletionPreview | null> => {
 		let completion = ""
 		let isCancelled = false
 		let firstLineComplete = false
@@ -181,11 +181,10 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		])
 
 		const editor = vscode.window.activeTextEditor
+		if (!editor) return null
 
-		if (editor) {
-			isLoadingCompletion = false
-			editor.setDecorations(loadingDecorationType, [])
-		}
+		isLoadingCompletion = false
+		editor.setDecorations(loadingDecorationType, [])
 
 		for await (const chunk of stream) {
 			if (activeCompletionId !== completionId) {
@@ -206,7 +205,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 				} else {
 					// Set a new throttle timeout
 					throttleTimeout = setTimeout(() => {
-						if (editor && editor.document === document) {
+						if (editor.document === document) {
 							if (isShowingAutocompletePreview) {
 								vscode.commands.executeCommand("editor.action.inlineSuggest.trigger")
 							}
@@ -217,16 +216,14 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			}
 		}
 
-		if (editor) {
-			editor.setDecorations(streamingDecorationType, [])
-		}
+		editor.setDecorations(streamingDecorationType, [])
 
 		if (throttleTimeout) clearTimeout(throttleTimeout)
 
 		// Set context for keybindings
 		vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, true)
 
-		return { preview, isCancelled }
+		return isCancelled ? null : preview
 	}
 
 	const generateCompletionText = async (
@@ -274,7 +271,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		const startTime = performance.now()
 		const result = await processCompletionStream(systemPrompt, prompt.prompt, completionId, document)
 		const duration = performance.now() - startTime
-		if (result.isCancelled) {
+		if (!result) {
 			console.info(`Completion ${completionId} CANCELLED`)
 		} else {
 			console.info(`
@@ -284,17 +281,13 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 
 				Prompt: """${prompt.prompt}"""
 
-				Completion: """${result.preview.rawCompletion}"""
+				Completion: """${result.rawCompletion}"""
 
 				Duration: ${duration} ms
 				`)
 		}
 
-		if (
-			result.isCancelled ||
-			token.isCancellationRequested ||
-			!validateCompletionContext(context, document, position)
-		) {
+		if (!result || token.isCancellationRequested || !validateCompletionContext(context, document, position)) {
 			const editor = vscode.window.activeTextEditor
 			if (editor && isLoadingCompletion) {
 				editor.setDecorations(loadingDecorationType, [])
@@ -303,7 +296,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			return null
 		}
 
-		return result.preview
+		return result
 	}
 
 	const provideInlineCompletionItems = async (
@@ -312,7 +305,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		context: vscode.InlineCompletionContext,
 		token: vscode.CancellationToken,
 	): Promise<vscode.InlineCompletionItem[] | vscode.InlineCompletionList | null> => {
-		// Don't provide completions if disabled
 		if (!enabled || isFileDisabled(document)) {
 			return null
 		}
@@ -335,7 +327,12 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			isShowingAutocompletePreview = true
 			vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, true)
 
-			return [new vscode.InlineCompletionItem(preview.firstLine)]
+			const item = new vscode.InlineCompletionItem(preview.firstLine)
+			item.command = {
+				command: "kilo-code.acceptAutocompletePreview",
+				title: "Accept Completion",
+			}
+			return [item]
 		} catch (error) {
 			console.error("Error providing inline completion:", error)
 			return null
@@ -413,6 +410,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 
 	const registerPreviewCommands = (context: vscode.ExtensionContext): void => {
 		const acceptCommand = vscode.commands.registerCommand("kilo-code.acceptAutocompletePreview", async () => {
+			console.log("Accepting autocomplete preview...")
 			const editor = vscode.window.activeTextEditor
 			if (!editor) return
 
