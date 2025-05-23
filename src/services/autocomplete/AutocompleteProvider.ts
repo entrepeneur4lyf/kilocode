@@ -181,9 +181,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 	// Inline completion provider disposable
 	let inlineCompletionProviderDisposable: vscode.Disposable | null = null
 
-	/**
-	 * Processes the completion stream and returns the result
-	 */
 	const processCompletionStream = async (
 		systemPrompt: string,
 		prompt: string,
@@ -193,8 +190,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		let completion = ""
 		let isCancelled = false
 		let firstLineComplete = false
-
-		// Local state for throttling
 		let throttleTimeout: NodeJS.Timeout | null = null
 
 		// Create the stream using the API handler's createMessage method
@@ -203,17 +198,13 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			{ role: "user", content: [{ type: "text", text: prompt }] },
 		])
 
-		// Get the editor for streaming updates
 		const editor = vscode.window.activeTextEditor
 
-		// Clear loading indicator when we start receiving content
 		if (editor) {
 			isLoadingCompletion = false
 			editor.setDecorations(loadingDecorationType, [])
-			// Keep the streaming indicator visible while content is streaming
 		}
 
-		// Stream updates to store completion
 		for await (const chunk of stream) {
 			if (activeCompletionId !== completionId) {
 				isCancelled = true
@@ -226,12 +217,9 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 
 				if (throttleTimeout) clearTimeout(throttleTimeout)
 
-				// Check if first line is complete (has a newline)
 				if (!firstLineComplete && completion.includes("\n")) {
 					firstLineComplete = true
 					isShowingAutocompletePreview = true
-
-					// Trigger inline suggestion
 					vscode.commands.executeCommand("editor.action.inlineSuggest.trigger")
 				} else {
 					// Set a new throttle timeout
@@ -247,7 +235,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			}
 		}
 
-		// Clear streaming indicator when streaming is complete
 		if (editor) {
 			editor.setDecorations(streamingDecorationType, [])
 		}
@@ -260,43 +247,31 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		return { preview, isCancelled }
 	}
 
-	/**
-	 * Generates a new completion text
-	 */
 	const generateCompletionText = async (
 		document: vscode.TextDocument,
 		position: vscode.Position,
 		context: vscode.InlineCompletionContext,
 		token: vscode.CancellationToken,
 	): Promise<CompletionPreview | null> => {
-		// Show streaming indicator while generating completion
 		const editor = vscode.window.activeTextEditor
 		if (editor && editor.document === document) {
 			showStreamingIndicator(editor)
 		}
-		// Generate a unique ID for this completion
 		const completionId = crypto.randomUUID()
 		activeCompletionId = completionId
-
-		// Reset the acceptance state for a new completion
 		hasAcceptedFirstLine = false
 
-		// Load configuration
 		const conf = await deps.config.loadConfig()
 		const useImports = conf?.useImports || false
 		const useDefinitions = conf?.onlyMyCode || false
 		const multilineCompletions = conf?.multilineCompletions || "auto"
-
-		// Gather context
 		const codeContext = await deps.contextGatherer.gatherContext(document, position, useImports, useDefinitions)
 
-		// Generate snippets
 		const snippets = [
 			...generateImportSnippets(useImports, codeContext.imports, document.uri.fsPath),
 			...generateDefinitionSnippets(useDefinitions, codeContext.definitions),
 		]
 
-		// Define options for snippet generation and prompt rendering
 		const promptOptions = {
 			language: document.languageId,
 			includeImports: useImports,
@@ -338,9 +313,7 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		}
 
 		if (result.isCancelled || token.isCancellationRequested) {
-			// Make sure to clear the loading indicator if the completion is cancelled
 			const editor = vscode.window.activeTextEditor
-
 			if (editor && isLoadingCompletion) {
 				editor.setDecorations(loadingDecorationType, [])
 				isLoadingCompletion = false
@@ -348,11 +321,8 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			return null
 		}
 
-		// Validate completion against selection context
 		if (!validateCompletionContext(context, document, position)) {
-			// Make sure to clear the loading indicator if validation fails
 			const editor = vscode.window.activeTextEditor
-
 			if (editor && isLoadingCompletion) {
 				editor.setDecorations(loadingDecorationType, [])
 				isLoadingCompletion = false
@@ -481,12 +451,10 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 						editBuilder.insert(editor.selection.active, preview.firstLine)
 					})
 
-					// Mark that we've accepted the first line
 					hasAcceptedFirstLine = true
 
 					// Wait a moment for the first line to be inserted
 					setTimeout(async () => {
-						// Trigger a new completion to show the remaining lines
 						await vscode.commands.executeCommand("editor.action.inlineSuggest.trigger")
 					}, 50)
 				}
@@ -496,7 +464,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 					editBuilder.insert(editor.selection.active, preview.remainingLines)
 				})
 
-				// Reset state
 				clearAutocompletePreview()
 			} else {
 				// For single line completion or when preview.remainingLines is empty after first line acceptance
@@ -515,24 +482,18 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		context.subscriptions.push(acceptCommand, dismissCommand)
 	}
 
-	/**
-	 * Cleans up resources when the provider is no longer needed
-	 */
 	const dispose = () => {
 		if (isShowingAutocompletePreview) {
 			clearAutocompletePreview()
 		}
 
-		// Dispose of the inline completion provider
 		if (inlineCompletionProviderDisposable) {
 			inlineCompletionProviderDisposable.dispose()
 			inlineCompletionProviderDisposable = null
 		}
 
-		// Dispose of the decorator types
 		loadingDecorationType.dispose()
 		streamingDecorationType.dispose()
-		// Reset the context when disposing
 		vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, false)
 	}
 
@@ -561,9 +522,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 		registerToggleCommand(context, statusBarItem)
 	}
 
-	// Main provider implementation
 	register(context)
-
-	// Subscribe to cleanup
 	context.subscriptions.push({ dispose })
 }
