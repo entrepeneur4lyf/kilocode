@@ -260,9 +260,6 @@ function hookAutocompleteInner(context: vscode.ExtensionContext) {
 			clearTimeout(throttleTimeout)
 		}
 
-		// Final update to ensure we have the correct preview
-		preview = processCompletionText(completion)
-
 		// Set context for keybindings
 		vscode.commands.executeCommand("setContext", AUTOCOMPLETE_PREVIEW_VISIBLE_CONTEXT_KEY, true)
 
